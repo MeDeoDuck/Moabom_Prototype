@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Tech Products</title>
+</head>
+<body>
+    <h1>Tech Products</h1>
+
+    <section>
+        <h2>Create Product</h2>
+        <form id="create-product-form">
+            <label>
+                Name
+                <input type="text" name="name" required>
+            </label>
+            <label>
+                Brand
+                <input type="text" name="brand">
+            </label>
+            <button type="submit">Create</button>
+        </form>
+        <p id="create-product-message"></p>
+    </section>
+
+    <section>
+        <h2>Product List</h2>
+        {% if products %}
+            <ul>
+                {% for product in products %}
+                    <li>
+                        <a href="/products/{{ product.product_id }}">{{ product.name }}</a>
+                        {% if product.brand %}- {{ product.brand }}{% endif %}
+                    </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p>No products yet. Create one using the form above.</p>
+        {% endif %}
+    </section>
+
+    <script>
+        const form = document.getElementById('create-product-form');
+        const message = document.getElementById('create-product-message');
+        form.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            message.textContent = 'Creating product...';
+            const payload = {
+                name: form.name.value,
+                brand: form.brand.value
+            };
+
+            const response = await fetch('/products', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
+                message.textContent = 'Failed: ' + (error.detail || 'Unknown error');
+                return;
+            }
+
+            message.textContent = 'Product created. Refreshing...';
+            window.location.reload();
+        });
+    </script>
+</body>
+</html>

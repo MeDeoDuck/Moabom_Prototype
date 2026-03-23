@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ product.name }}</title>
+</head>
+<body>
+    <p><a href="/products">← Back to products</a></p>
+    <h1>{{ product.name }}</h1>
+    <p><strong>Brand:</strong> {{ product.brand or 'N/A' }}</p>
+    <p><strong>Created:</strong> {{ product.created_at }}</p>
+
+    <section>
+        <button id="sync-button">Sync videos</button>
+        <label>
+            Max results
+            <input id="max-results" type="number" value="5" min="1" max="25">
+        </label>
+        <p id="sync-message"></p>
+    </section>
+
+    <section>
+        <h2>Videos</h2>
+        {% if videos %}
+            <table border="1" cellpadding="6" cellspacing="0">
+                <thead>
+                    <tr>
+                        <th>Thumbnail</th>
+                        <th>Title</th>
+                        <th>Views</th>
+                        <th>Likes</th>
+                        <th>Comments</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for video in videos %}
+                        <tr>
+                            <td>
+                                {% if video.thumbnail_url %}
+                                    <img src="{{ video.thumbnail_url }}" alt="{{ video.title }}" width="160">
+                                {% endif %}
+                            </td>
+                            <td>
+                                <strong>{{ video.title }}</strong><br>
+                                <small>Published: {{ video.published_at or 'N/A' }}</small><br>
+                                <small>Video ID: {{ video.video_id }}</small>
+                            </td>
+                            <td>{{ video.view_count or 0 }}</td>
+                            <td>{{ video.like_count or 0 }}</td>
+                            <td>{{ video.comment_count or 0 }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <p>No videos synced yet.</p>
+        {% endif %}
+    </section>
+
+    <script>
+        const syncButton = document.getElementById('sync-button');
+        const syncMessage = document.getElementById('sync-message');
+        const maxResultsInput = document.getElementById('max-results');
+
+        syncButton.addEventListener('click', async () => {
+            syncButton.disabled = true;
+            syncMessage.textContent = 'Syncing videos...';
+            const response = await fetch('/products/{{ product.product_id }}/sync', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ max_results: Number(maxResultsInput.value || 5) })
+            });
+
+            if (!response.ok) {
+                const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
+                syncMessage.textContent = 'Sync failed: ' + (error.detail || 'Unknown error');
+                syncButton.disabled = false;
+                return;
+            }
+
+            const data = await response.json();
+            syncMessage.textContent = 'Synced ' + data.length + ' videos. Reloading...';
+            window.location.reload();
+        });
+    </script>
+</body>
+</html>
