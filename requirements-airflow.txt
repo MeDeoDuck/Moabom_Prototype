@@ -1,0 +1,5 @@
+# Airflow dependencies are separated to avoid impacting the lightweight API runtime.
+# Install with:
+#   pip install -r requirements-airflow.txt
+# For production, pin with Airflow constraints if needed.
+apache-airflow==2.10.0

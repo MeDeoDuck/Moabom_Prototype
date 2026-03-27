@@ -46,6 +46,51 @@ Navigate to: **http://localhost:8000**
 
 ---
 
+## ⏱️ Airflow Pipeline (Optional)
+
+If YouTube sync is getting slow, you can run the new Airflow DAG that splits the work into tasks and processes video comments in parallel.
+
+### 1. Install Airflow Dependencies
+```bash
+pip install -r requirements-airflow.txt
+```
+
+### 2. Initialize Airflow (first run)
+```bash
+airflow db init
+```
+
+### 3. Run Airflow Components
+```bash
+airflow scheduler
+```
+
+In another terminal:
+```bash
+airflow webserver --port 8080
+```
+
+### 4. Trigger DAG
+- DAG ID: `youtube_product_sync_pipeline`
+- File: `dags/youtube_product_sync_dag.py`
+
+Trigger from UI, or with CLI:
+```bash
+airflow dags trigger youtube_product_sync_pipeline
+```
+
+### 5. Verify Airflow + DAG + DB Checks
+```bash
+python verify_airflow_pipeline.py
+```
+
+This script checks:
+- Airflow import and DAG parsing
+- Required environment variables
+- Database connectivity and core table presence
+
+---
+
 ## 📚 Documentation
 
 | Document | Purpose | Read Time |

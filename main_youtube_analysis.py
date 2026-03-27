@@ -658,7 +658,7 @@ def write_templates():
     }
     
     for path, content in templates.items():
-        Path(path).write_text(content)
+        Path(path).write_text(content, encoding="utf-8")
     
     print("✓ Templates written")
 

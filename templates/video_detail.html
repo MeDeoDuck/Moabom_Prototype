@@ -1,0 +1,104 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{ video.title }} - Video Analysis</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .container { max-width: 1000px; margin: 0 auto; }
+        h1 { color: #333; }
+        .video-info { background: #f5f5f5; padding: 15px; border-radius: 4px; margin-bottom: 20px; }
+        .video-info p { margin: 8px 0; }
+        .youtube-link { color: #ff0000; text-decoration: none; font-weight: bold; }
+        .youtube-link:hover { text-decoration: underline; }
+        .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 20px; }
+        .stat-box { background: #007bff; color: white; padding: 15px; border-radius: 4px; text-align: center; }
+        .stat-box .label { font-size: 0.9em; opacity: 0.9; }
+        .stat-box .value { font-size: 1.8em; font-weight: bold; }
+        .sentiment-section { margin-top: 30px; }
+        .sentiment-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 20px; }
+        .sentiment-box { padding: 15px; border-radius: 4px; text-align: center; }
+        .sentiment-box.positive { background: #28a745; color: white; }
+        .sentiment-box.neutral { background: #ffc107; color: black; }
+        .sentiment-box.negative { background: #dc3545; color: white; }
+        .sentiment-box .label { font-size: 0.9em; opacity: 0.9; }
+        .sentiment-box .value { font-size: 1.5em; font-weight: bold; }
+        .comments-section { margin-top: 30px; }
+        .comment-item { background: #f9f9f9; padding: 12px; margin-bottom: 10px; border-radius: 4px; border-left: 4px solid #ddd; }
+        .comment-item.positive { border-left-color: #28a745; }
+        .comment-item.negative { border-left-color: #dc3545; }
+        .comment-item.neutral { border-left-color: #ffc107; }
+        .comment-text { margin-bottom: 5px; }
+        .comment-meta { font-size: 0.85em; color: #666; }
+        .back-link { margin-bottom: 20px; }
+        .back-link a { color: #007bff; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="back-link">
+            <a href="/products/{{ product_id }}">← Back to Product</a>
+        </div>
+        
+        <h1>{{ video.title }}</h1>
+        
+        <div class="video-info">
+            <p><strong>YouTube:</strong> <a href="https://www.youtube.com/watch?v={{ video.video_id }}" target="_blank" class="youtube-link">Watch Video</a></p>
+            <p><strong>Published:</strong> {{ video.published_at }}</p>
+        </div>
+        
+        <div class="stats">
+            <div class="stat-box">
+                <div class="label">Views</div>
+                <div class="value">{{ video.view_count }}</div>
+            </div>
+            <div class="stat-box">
+                <div class="label">Likes</div>
+                <div class="value">{{ video.like_count }}</div>
+            </div>
+            <div class="stat-box">
+                <div class="label">Comments</div>
+                <div class="value">{{ video.comment_count }}</div>
+            </div>
+            <div class="stat-box">
+                <div class="label">Product-Related</div>
+                <div class="value">{{ product_related_count }}</div>
+            </div>
+        </div>
+        
+        <div class="sentiment-section">
+            <h2>Sentiment Analysis</h2>
+            <div class="sentiment-summary">
+                <div class="sentiment-box positive">
+                    <div class="label">Positive</div>
+                    <div class="value">{{ sentiment_positive }}</div>
+                </div>
+                <div class="sentiment-box neutral">
+                    <div class="label">Neutral</div>
+                    <div class="value">{{ sentiment_neutral }}</div>
+                </div>
+                <div class="sentiment-box negative">
+                    <div class="label">Negative</div>
+                    <div class="value">{{ sentiment_negative }}</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="comments-section">
+            <h2>Product-Related Comments</h2>
+            {% if comments %}
+                {% for comment in comments %}
+                    <div class="comment-item {{ comment.sentiment_label }}">
+                        <div class="comment-text">{{ comment.text_raw }}</div>
+                        <div class="comment-meta">
+                            Sentiment: <strong>{{ comment.sentiment_label|upper }}</strong> ({{ comment.sentiment_score }})
+                        </div>
+                    </div>
+                {% endfor %}
+            {% else %}
+                <p>No product-related comments found.</p>
+            {% endif %}
+        </div>
+    </div>
+</body>
+</html>

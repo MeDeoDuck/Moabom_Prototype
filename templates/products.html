@@ -1,69 +1,88 @@
+
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
     <title>Tech Products</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .container { max-width: 900px; margin: 0 auto; }
+        h1 { color: #333; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input, select { padding: 8px; width: 200px; }
+        button { padding: 10px 20px; background: #007bff; color: white; border: none; cursor: pointer; border-radius: 4px; }
+        button:hover { background: #0056b3; }
+        .product-list { margin-top: 30px; }
+        .product-item { padding: 12px; border: 1px solid #ddd; margin-bottom: 10px; border-radius: 4px; }
+        .product-item a { color: #007bff; text-decoration: none; }
+        .product-item a:hover { text-decoration: underline; }
+        .product-meta { font-size: 0.9em; color: #666; margin-top: 5px; }
+    </style>
 </head>
 <body>
-    <h1>Tech Products</h1>
-
-    <section>
-        <h2>Create Product</h2>
-        <form id="create-product-form">
-            <label>
-                Name
-                <input type="text" name="name" required>
-            </label>
-            <label>
-                Brand
-                <input type="text" name="brand">
-            </label>
-            <button type="submit">Create</button>
-        </form>
-        <p id="create-product-message"></p>
-    </section>
-
-    <section>
-        <h2>Product List</h2>
-        {% if products %}
-            <ul>
+    <div class="container">
+        <h1>📱 Tech Products Dashboard</h1>
+        
+        <div>
+            <h2>Add New Product</h2>
+            <form id="productForm">
+                <div class="form-group">
+                    <label for="name">Product Name *</label>
+                    <input type="text" id="name" name="name" required>
+                </div>
+                <div class="form-group">
+                    <label for="brand">Brand</label>
+                    <input type="text" id="brand" name="brand">
+                </div>
+                <div class="form-group">
+                    <label for="category">Category</label>
+                    <input type="text" id="category" name="category" placeholder="e.g., Smartphone, Laptop">
+                </div>
+                <button type="submit">Create Product</button>
+            </form>
+        </div>
+        
+        <div class="product-list">
+            <h2>Products ({{ products|length }})</h2>
+            {% if products %}
                 {% for product in products %}
-                    <li>
-                        <a href="/products/{{ product.product_id }}">{{ product.name }}</a>
-                        {% if product.brand %}- {{ product.brand }}{% endif %}
-                    </li>
+                    <div class="product-item">
+                        <strong><a href="/products/{{ product.product_id }}">{{ product.name }}</a></strong>
+                        <div class="product-meta">
+                            Brand: {{ product.brand or 'N/A' }} | Category: {{ product.category or 'N/A' }}
+                        </div>
+                    </div>
                 {% endfor %}
-            </ul>
-        {% else %}
-            <p>No products yet. Create one using the form above.</p>
-        {% endif %}
-    </section>
+            {% else %}
+                <p>No products yet. Create one above!</p>
+            {% endif %}
+        </div>
+    </div>
 
     <script>
-        const form = document.getElementById('create-product-form');
-        const message = document.getElementById('create-product-message');
-        form.addEventListener('submit', async (event) => {
-            event.preventDefault();
-            message.textContent = 'Creating product...';
-            const payload = {
-                name: form.name.value,
-                brand: form.brand.value
+        document.getElementById('productForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const data = {
+                name: document.getElementById('name').value,
+                brand: document.getElementById('brand').value,
+                category: document.getElementById('category').value,
             };
-
-            const response = await fetch('/products', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-
-            if (!response.ok) {
-                const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
-                message.textContent = 'Failed: ' + (error.detail || 'Unknown error');
-                return;
+            
+            try {
+                const response = await fetch('/products', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data),
+                });
+                
+                if (response.ok) {
+                    location.reload();
+                } else {
+                    alert('Error creating product');
+                }
+            } catch (error) {
+                alert('Error: ' + error);
             }
-
-            message.textContent = 'Product created. Refreshing...';
-            window.location.reload();
         });
     </script>
 </body>

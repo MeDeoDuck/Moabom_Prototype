@@ -1,87 +1,114 @@
+
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <title>{{ product.name }}</title>
+    <title>{{ product.name }} - Product Details</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .container { max-width: 1000px; margin: 0 auto; }
+        h1 { color: #333; }
+        .product-info { background: #f5f5f5; padding: 15px; border-radius: 4px; margin-bottom: 20px; }
+        .product-info p { margin: 5px 0; }
+        .sync-btn { padding: 12px 24px; background: #28a745; color: white; border: none; cursor: pointer; border-radius: 4px; font-size: 16px; }
+        .sync-btn:hover { background: #218838; }
+        .sync-btn:disabled { background: #ccc; cursor: not-allowed; }
+        .videos-section { margin-top: 30px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+        th { background: #007bff; color: white; }
+        tr:hover { background: #f5f5f5; }
+        .video-title a { color: #007bff; text-decoration: none; }
+        .video-title a:hover { text-decoration: underline; }
+        .video-thumb { width: 80px; height: 45px; object-fit: cover; border-radius: 3px; }
+        .back-link { margin-bottom: 20px; }
+        .back-link a { color: #007bff; }
+    </style>
 </head>
 <body>
-    <p><a href="/products">← Back to products</a></p>
-    <h1>{{ product.name }}</h1>
-    <p><strong>Brand:</strong> {{ product.brand or 'N/A' }}</p>
-    <p><strong>Created:</strong> {{ product.created_at }}</p>
-
-    <section>
-        <button id="sync-button">Sync videos</button>
-        <label>
-            Max results
-            <input id="max-results" type="number" value="5" min="1" max="25">
-        </label>
-        <p id="sync-message"></p>
-    </section>
-
-    <section>
-        <h2>Videos</h2>
-        {% if videos %}
-            <table border="1" cellpadding="6" cellspacing="0">
-                <thead>
-                    <tr>
-                        <th>Thumbnail</th>
-                        <th>Title</th>
-                        <th>Views</th>
-                        <th>Likes</th>
-                        <th>Comments</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for video in videos %}
+    <div class="container">
+        <div class="back-link">
+            <a href="/products">← Back to Products</a>
+        </div>
+        
+        <h1>{{ product.name }}</h1>
+        
+        <div class="product-info">
+            <p><strong>Brand:</strong> {{ product.brand or 'N/A' }}</p>
+            <p><strong>Category:</strong> {{ product.category or 'N/A' }}</p>
+            <p><strong>Created:</strong> {{ product.created_at }}</p>
+        </div>
+        
+        <div>
+            <button class="sync-btn" onclick="syncVideos()" id="syncBtn">🔄 Sync Videos from YouTube</button>
+            <span id="syncStatus"></span>
+        </div>
+        
+        <div class="videos-section">
+            <h2>Videos ({{ videos|length }})</h2>
+            {% if videos %}
+                <table>
+                    <thead>
                         <tr>
-                            <td>
-                                {% if video.thumbnail_url %}
-                                    <img src="{{ video.thumbnail_url }}" alt="{{ video.title }}" width="160">
-                                {% endif %}
-                            </td>
-                            <td>
-                                <strong>{{ video.title }}</strong><br>
-                                <small>Published: {{ video.published_at or 'N/A' }}</small><br>
-                                <small>Video ID: {{ video.video_id }}</small>
-                            </td>
-                            <td>{{ video.view_count or 0 }}</td>
-                            <td>{{ video.like_count or 0 }}</td>
-                            <td>{{ video.comment_count or 0 }}</td>
+                            <th>Thumbnail</th>
+                            <th>Title</th>
+                            <th>Views</th>
+                            <th>Likes</th>
+                            <th>Comments</th>
                         </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        {% else %}
-            <p>No videos synced yet.</p>
-        {% endif %}
-    </section>
+                    </thead>
+                    <tbody>
+                        {% for video in videos %}
+                            <tr>
+                                <td>
+                                    {% if video.thumbnail_url %}
+                                        <img src="{{ video.thumbnail_url }}" alt="thumbnail" class="video-thumb">
+                                    {% endif %}
+                                </td>
+                                <td class="video-title">
+                                    <a href="/products/{{ product.product_id }}/videos/{{ video.video_id }}">
+                                        {{ video.title[:50] }}...
+                                    </a>
+                                </td>
+                                <td>{{ video.view_count }}</td>
+                                <td>{{ video.like_count }}</td>
+                                <td>{{ video.comment_count }}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            {% else %}
+                <p>No videos yet. Click "Sync Videos from YouTube" to fetch them.</p>
+            {% endif %}
+        </div>
+    </div>
 
     <script>
-        const syncButton = document.getElementById('sync-button');
-        const syncMessage = document.getElementById('sync-message');
-        const maxResultsInput = document.getElementById('max-results');
-
-        syncButton.addEventListener('click', async () => {
-            syncButton.disabled = true;
-            syncMessage.textContent = 'Syncing videos...';
-            const response = await fetch('/products/{{ product.product_id }}/sync', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ max_results: Number(maxResultsInput.value || 5) })
-            });
-
-            if (!response.ok) {
-                const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
-                syncMessage.textContent = 'Sync failed: ' + (error.detail || 'Unknown error');
-                syncButton.disabled = false;
-                return;
+        async function syncVideos() {
+            const btn = document.getElementById('syncBtn');
+            const status = document.getElementById('syncStatus');
+            
+            btn.disabled = true;
+            status.textContent = ' Syncing...';
+            
+            try {
+                const response = await fetch('/products/{{ product.product_id }}/sync', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                });
+                
+                if (response.ok) {
+                    const result = await response.json();
+                    status.textContent = ' ✓ Synced! Videos: ' + result.videos_count + ', Comments: ' + result.comments_count;
+                    setTimeout(() => location.reload(), 1000);
+                } else {
+                    status.textContent = ' Error during sync';
+                }
+            } catch (error) {
+                status.textContent = ' Error: ' + error;
+            } finally {
+                btn.disabled = false;
             }
-
-            const data = await response.json();
-            syncMessage.textContent = 'Synced ' + data.length + ' videos. Reloading...';
-            window.location.reload();
-        });
+        }
     </script>
 </body>
 </html>
