@@ -576,6 +576,12 @@ TEMPLATE_VIDEO_DETAIL = """
         .comment-meta { font-size: 0.85em; color: #666; }
         .back-link { margin-bottom: 20px; }
         .back-link a { color: #007bff; }
+        .pagination { margin-top: 20px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+        .pagination a, .pagination span { padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; text-decoration: none; }
+        .pagination a { color: #007bff; }
+        .pagination a:hover { background: #f2f6ff; }
+        .pagination .current { background: #007bff; color: #fff; border-color: #007bff; }
+        .pagination .disabled { color: #999; }
     </style>
 </head>
 <body>
@@ -629,7 +635,7 @@ TEMPLATE_VIDEO_DETAIL = """
         </div>
         
         <div class="comments-section">
-            <h2>Product-Related Comments</h2>
+            <h2>Product-Related Comments ({{ product_related_count }} total)</h2>
             {% if comments %}
                 {% for comment in comments %}
                     <div class="comment-item {{ comment.sentiment_label }}">
@@ -639,6 +645,24 @@ TEMPLATE_VIDEO_DETAIL = """
                         </div>
                     </div>
                 {% endfor %}
+
+                {% if total_pages > 1 %}
+                    <div class="pagination">
+                        {% if current_page > 1 %}
+                            <a href="?page={{ current_page - 1 }}">Prev</a>
+                        {% else %}
+                            <span class="disabled">Prev</span>
+                        {% endif %}
+
+                        <span class="current">Page {{ current_page }} / {{ total_pages }}</span>
+
+                        {% if current_page < total_pages %}
+                            <a href="?page={{ current_page + 1 }}">Next</a>
+                        {% else %}
+                            <span class="disabled">Next</span>
+                        {% endif %}
+                    </div>
+                {% endif %}
             {% else %}
                 <p>No product-related comments found.</p>
             {% endif %}
