@@ -814,8 +814,8 @@ async def sync_product_videos(product_id: int, data: dict = None):
 
 
 @app.get("/products/{product_id}/videos/{video_id}", response_class=HTMLResponse)
-async def video_detail(request: Request, product_id: int, video_id: str):
-    """Show video detail page with sentiment analysis."""
+async def video_detail(request: Request, product_id: int, video_id: str, page: int = 1):
+    """Show video detail page with sentiment analysis and pagination."""
     product = query_one("SELECT * FROM tech_products WHERE product_id = %s", (product_id,))
     
     if not product:
@@ -829,15 +829,28 @@ async def video_detail(request: Request, product_id: int, video_id: str):
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
     
-    # Get product-related comments with sentiment
+    # Pagination params
+    page = max(1, page)
+    per_page = 10
+    offset = (page - 1) * per_page
+    
+    # Get product-related comments with sentiment (paginated)
     comments = query_all(
         """SELECT c.comment_id, c.text_raw, cs.sentiment_label, cs.sentiment_score
            FROM comments c
            LEFT JOIN comment_sentiments cs ON c.comment_id = cs.comment_id
            WHERE c.video_id = %s AND c.is_product_related = true
-           ORDER BY RANDOM() LIMIT 10""",
+           ORDER BY c.created_at DESC LIMIT %s OFFSET %s""",
+        (video_id, per_page, offset)
+    )
+    
+    # Count total product-related comments
+    product_related_count = query_one(
+        "SELECT COUNT(*) as count FROM comments WHERE video_id = %s AND is_product_related = true",
         (video_id,)
     )
+    total_comments = product_related_count["count"] if product_related_count else 0
+    total_pages = (total_comments + per_page - 1) // per_page
     
     # Count sentiment distribution
     sentiment_counts = query_all(
@@ -851,18 +864,16 @@ async def video_detail(request: Request, product_id: int, video_id: str):
     
     sentiment_map = {row["sentiment_label"]: row["count"] for row in sentiment_counts}
     
-    product_related_count = query_one(
-        "SELECT COUNT(*) as count FROM comments WHERE video_id = %s AND is_product_related = true",
-        (video_id,)
-    )
-    
     return templates.TemplateResponse("video_detail.html", {
         "request": request,
         "product_id": product_id,
         "product": product,
         "video": video,
         "comments": comments,
-        "product_related_count": product_related_count["count"] if product_related_count else 0,
+        "product_related_count": total_comments,
+        "current_page": page,
+        "total_pages": total_pages,
+        "per_page": per_page,
         "sentiment_positive": sentiment_map.get("positive", 0),
         "sentiment_neutral": sentiment_map.get("neutral", 0),
         "sentiment_negative": sentiment_map.get("negative", 0),
