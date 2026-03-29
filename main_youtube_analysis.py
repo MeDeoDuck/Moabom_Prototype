@@ -6,8 +6,11 @@ FastAPI + PostgreSQL + YouTube Data API v3
 import os
 import json
 import random
+import re
+import textwrap
 from typing import Optional, List, Dict, Any
 from datetime import datetime
+from io import BytesIO
 from pathlib import Path
 
 import psycopg2
@@ -15,16 +18,29 @@ from psycopg2.extras import RealDictCursor
 from dotenv import load_dotenv
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 import httpx
 import uvicorn
+from prompt_manager import build_transcript_report_prompt
+
+try:
+    from youtube_transcript_api import YouTubeTranscriptApi
+except ImportError:
+    YouTubeTranscriptApi = None
+
+try:
+    from google import genai
+except ImportError:
+    genai = None
 
 # Load environment variables
 load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/techdb")
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY", "")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3-flash-preview")
 
 # ============================================================================
 # DATABASE LAYER
@@ -97,6 +113,17 @@ def init_db():
     
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_sentiments_comment ON comment_sentiments(comment_id);
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS video_transcripts (
+            video_id        VARCHAR(64) PRIMARY KEY REFERENCES videos(video_id) ON DELETE CASCADE,
+            transcript_text TEXT NOT NULL,
+            language_code   VARCHAR(16),
+            segment_count   INT,
+            source          VARCHAR(32) DEFAULT 'youtube_transcript_api',
+            updated_at      TIMESTAMP DEFAULT NOW()
+        );
     """)
     
     conn.commit()
@@ -268,6 +295,299 @@ def fetch_video_comments(video_id: str, max_pages: int = 2) -> List[Dict[str, st
     except Exception as e:
         print(f"Error fetching comments: {e}")
         return []
+
+
+def fetch_video_transcript(video_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Fetch transcript text for a video using youtube-transcript-api.
+    Returns dict with transcript_text, language_code, segment_count or None.
+    """
+    if YouTubeTranscriptApi is None:
+        return None
+
+    # Try Korean first, then English, then automatic selection.
+    language_candidates = [
+        ["ko"],
+        ["en"],
+        ["ko", "en"],
+    ]
+
+    transcript_items = None
+    language_code = None
+
+    for languages in language_candidates:
+        try:
+            transcript_items = YouTubeTranscriptApi.get_transcript(video_id, languages=languages)
+            language_code = languages[0]
+            break
+        except Exception:
+            continue
+
+    if not transcript_items:
+        return None
+
+    cleaned_parts = [item.get("text", "").strip() for item in transcript_items]
+    transcript_text = " ".join(part for part in cleaned_parts if part)
+    if not transcript_text:
+        return None
+
+    return {
+        "transcript_text": transcript_text,
+        "language_code": language_code,
+        "segment_count": len(transcript_items),
+    }
+
+
+def build_transcript_report_heuristic(transcript_text: str) -> str:
+    """
+    Build a detailed product analysis report from transcript:
+    1. Product Description (features, specs, capabilities mentioned)
+    2. Evaluation & Review (likes, dislikes, recommendations)
+    3. Key Takeaways
+    """
+    normalized = re.sub(r"\s+", " ", transcript_text or "").strip()
+    if not normalized:
+        return "No transcript content available."
+
+    # Split into sentences
+    sentences = re.split(r"(?<=[.!?])\s+", normalized)
+    sentences = [s.strip() for s in sentences if len(s.strip()) > 5]
+
+    if not sentences:
+        return "Transcript too short to analyze."
+
+    # ============================================================================
+    # 1. PRODUCT DESCRIPTION EXTRACTION
+    # ============================================================================
+    feature_keywords = {
+        "design", "feature", "spec", "performance", "battery", "camera", "display",
+        "processor", "memory", "storage", "screen", "build", "material", "size",
+        "weight", "quality", "speed", "power", "sound", "audio", "video",
+        "resolution", "fps", "refresh", "rate", "connector", "port", "interface",
+        "기능", "디자인", "성능", "배터리", "카메라", "디스플레이", "프로세서",
+        "메모리", "저장", "화면", "품질", "속도"
+    }
+    
+    description_sentences = []
+    for sentence in sentences:
+        sentence_lower = sentence.lower()
+        if any(kw in sentence_lower for kw in feature_keywords):
+            description_sentences.append(sentence)
+    
+    description_sentences = description_sentences[:3]  # Top 3 sentences about features
+
+    # ============================================================================
+    # 2. EVALUATION & SENTIMENT EXTRACTION
+    # ============================================================================
+    positive_indicators = {
+        "good", "great", "excellent", "amazing", "awesome", "best", "perfect",
+        "love", "like", "recommend", "worth", "impressed", "impressive",
+        "beautiful", "smooth", "fast", "excellent", "outstanding",
+        "좋다", "훌륭하다", "추천", "완벽", "훌륭", "빠르다", "훌륭한"
+    }
+    
+    negative_indicators = {
+        "bad", "poor", "terrible", "awful", "horrible", "worst", "useless",
+        "hate", "dislike", "problem", "issue", "broken", "disappointing",
+        "waste", "regret", "slow", "expensive", "cheap", "fragile",
+        "나쁘다", "문제", "느리다", "비싸다", "싼", "약하다"
+    }
+    
+    upgrade_phrases = {
+        "upgrade", "improve", "better", "compare", "vs", "difference",
+        "instead", "alternative", "choose", "pick", "go for",
+        "업그레이드", "개선", "더 나음", "비교", "차이", "선택"
+    }
+    
+    positive_sentences = []
+    negative_sentences = []
+    upgrade_sentences = []
+    
+    for sentence in sentences:
+        sentence_lower = sentence.lower()
+        pos_count = sum(1 for word in positive_indicators if word in sentence_lower)
+        neg_count = sum(1 for word in negative_indicators if word in sentence_lower)
+        upg_count = sum(1 for word in upgrade_phrases if word in sentence_lower)
+        
+        if pos_count > neg_count:
+            positive_sentences.append(sentence)
+        elif neg_count > pos_count:
+            negative_sentences.append(sentence)
+        
+        if upg_count > 0:
+            upgrade_sentences.append(sentence)
+    
+    # ============================================================================
+    # 3. KEYWORD EXTRACTION
+    # ============================================================================
+    token_candidates = re.findall(r"[A-Za-z0-9가-힣]{2,}", normalized.lower())
+    stopwords = {
+        "this", "that", "with", "from", "have", "will", "your", "about", "there",
+        "would", "they", "them", "then", "into", "here", "just", "also", "than",
+        "when", "what", "the", "and", "for", "but", "are", "has", "been", "is",
+        "있는", "그리고", "합니다", "하는", "에서", "으로", "하는데", "것", "수"
+    }
+    
+    filtered_tokens = [t for t in token_candidates if t not in stopwords and len(t) >= 2]
+    token_counts: Dict[str, int] = {}
+    for token in filtered_tokens:
+        token_counts[token] = token_counts.get(token, 0) + 1
+    
+    top_keywords = sorted(token_counts.items(), key=lambda x: x[1], reverse=True)[:6]
+
+    # ============================================================================
+    # 4. BUILD REPORT
+    # ============================================================================
+    report_lines = [
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        "PRODUCT ANALYSIS REPORT FROM VIDEO TRANSCRIPT",
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        "",
+    ]
+    
+    # Product Description
+    report_lines.extend([
+        "📋 PRODUCT DESCRIPTION",
+        "-" * 40,
+    ])
+    
+    if description_sentences:
+        for idx, sent in enumerate(description_sentences, 1):
+            # Truncate long sentences
+            truncated = (sent[:150] + "...") if len(sent) > 150 else sent
+            report_lines.append(f"{idx}. {truncated}")
+    else:
+        report_lines.append("(No specific product features mentioned)")
+    
+    report_lines.append("")
+    
+    # Positive Evaluation
+    report_lines.extend([
+        "👍 POSITIVE POINTS",
+        "-" * 40,
+    ])
+    
+    if positive_sentences:
+        for idx, sent in enumerate(positive_sentences[:2], 1):
+            truncated = (sent[:140] + "...") if len(sent) > 140 else sent
+            report_lines.append(f"• {truncated}")
+    else:
+        report_lines.append("(No positive remarks found)")
+    
+    report_lines.append("")
+    
+    # Negative/Concerns
+    report_lines.extend([
+        "⚠️  CONCERNS & CRITICISMS",
+        "-" * 40,
+    ])
+    
+    if negative_sentences:
+        for idx, sent in enumerate(negative_sentences[:2], 1):
+            truncated = (sent[:140] + "...") if len(sent) > 140 else sent
+            report_lines.append(f"• {truncated}")
+    else:
+        report_lines.append("(No significant concerns mentioned)")
+    
+    report_lines.append("")
+    
+    # Upgrade/Comparison Info
+    report_lines.extend([
+        "🔄 ALTERNATIVES & UPGRADES",
+        "-" * 40,
+    ])
+    
+    if upgrade_sentences:
+        for idx, sent in enumerate(upgrade_sentences[:2], 1):
+            truncated = (sent[:140] + "...") if len(sent) > 140 else sent
+            report_lines.append(f"• {truncated}")
+    else:
+        report_lines.append("(No comparison/upgrade info mentioned)")
+    
+    report_lines.append("")
+    
+    # Key Topics/Keywords
+    report_lines.extend([
+        "🔑 KEY TOPICS MENTIONED",
+        "-" * 40,
+    ])
+    
+    if top_keywords:
+        keyword_list = ", ".join([f"{k}({c})" for k, c in top_keywords])
+        report_lines.append(keyword_list)
+    else:
+        report_lines.append("N/A")
+    
+    report_lines.extend([
+        "",
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        f"Transcript length: {len(normalized)} characters | Sentences analyzed: {len(sentences)}",
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+    ])
+    
+    return "\n".join(report_lines)
+
+
+def build_transcript_report(transcript_text: str) -> str:
+    """
+    Build transcript report with Gemini first, then fallback to heuristic analysis.
+    """
+    normalized = re.sub(r"\s+", " ", transcript_text or "").strip()
+    if not normalized:
+        return "No transcript content available."
+
+    if genai is None or not GEMINI_API_KEY:
+        return build_transcript_report_heuristic(normalized)
+
+    try:
+        client = genai.Client(api_key=GEMINI_API_KEY)
+        prompt = build_transcript_report_prompt(normalized)
+
+        response = client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=prompt,
+        )
+
+        llm_text = getattr(response, "text", None)
+        if llm_text and llm_text.strip():
+            return llm_text.strip()
+    except Exception:
+        pass
+
+    return build_transcript_report_heuristic(normalized)
+
+
+def render_report_pdf(video_title: str, report_text: str) -> bytes:
+    """Render report text into a downloadable PDF."""
+    try:
+        from reportlab.lib.pagesizes import letter
+        from reportlab.pdfgen import canvas
+    except ImportError as e:
+        raise HTTPException(status_code=500, detail="reportlab is not installed") from e
+
+    buffer = BytesIO()
+    c = canvas.Canvas(buffer, pagesize=letter)
+    width, height = letter
+
+    y = height - 50
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(40, y, f"Video Transcript Report: {video_title[:80]}")
+    y -= 24
+
+    c.setFont("Helvetica", 10)
+    for paragraph in report_text.split("\n"):
+        wrapped_lines = textwrap.wrap(paragraph, width=100, break_long_words=True) if paragraph else [""]
+        for line in wrapped_lines:
+            if y < 40:
+                c.showPage()
+                c.setFont("Helvetica", 10)
+                y = height - 40
+            c.drawString(40, y, line)
+            y -= 14
+
+    c.save()
+    buffer.seek(0)
+    return buffer.read()
 
 
 # ============================================================================
@@ -450,6 +770,11 @@ TEMPLATE_PRODUCT_DETAIL = """
         .video-thumb { width: 80px; height: 45px; object-fit: cover; border-radius: 3px; }
         .back-link { margin-bottom: 20px; }
         .back-link a { color: #007bff; }
+        .sync-row { display: flex; align-items: center; gap: 12px; }
+        .sync-progress { width: 280px; height: 8px; background: #e9ecef; border-radius: 999px; overflow: hidden; display: none; }
+        .sync-progress.show { display: block; }
+        .sync-progress-fill { width: 0%; height: 100%; background: linear-gradient(90deg, #17a2b8, #28a745); transition: width 0.2s ease; }
+        .sync-status { font-size: 0.95em; color: #444; min-height: 20px; }
     </style>
 </head>
 <body>
@@ -466,9 +791,12 @@ TEMPLATE_PRODUCT_DETAIL = """
             <p><strong>Created:</strong> {{ product.created_at }}</p>
         </div>
         
-        <div>
+        <div class="sync-row">
             <button class="sync-btn" onclick="syncVideos()" id="syncBtn">🔄 Sync Videos from YouTube</button>
-            <span id="syncStatus"></span>
+            <div id="syncProgress" class="sync-progress" aria-hidden="true">
+                <div id="syncProgressFill" class="sync-progress-fill"></div>
+            </div>
+            <span id="syncStatus" class="sync-status"></span>
         </div>
         
         <div class="videos-section">
@@ -514,9 +842,23 @@ TEMPLATE_PRODUCT_DETAIL = """
         async function syncVideos() {
             const btn = document.getElementById('syncBtn');
             const status = document.getElementById('syncStatus');
+            const progress = document.getElementById('syncProgress');
+            const progressFill = document.getElementById('syncProgressFill');
+            let progressValue = 8;
+            let timer = null;
             
             btn.disabled = true;
-            status.textContent = ' Syncing...';
+            progress.classList.add('show');
+            progressFill.style.width = progressValue + '%';
+            status.textContent = 'Syncing...';
+
+            // Simulated progress while waiting for server response.
+            timer = setInterval(() => {
+                if (progressValue < 90) {
+                    progressValue += 4;
+                    progressFill.style.width = progressValue + '%';
+                }
+            }, 400);
             
             try {
                 const response = await fetch('/products/{{ product.product_id }}/sync', {
@@ -526,14 +868,22 @@ TEMPLATE_PRODUCT_DETAIL = """
                 
                 if (response.ok) {
                     const result = await response.json();
-                    status.textContent = ' ✓ Synced! Videos: ' + result.videos_count + ', Comments: ' + result.comments_count;
-                    setTimeout(() => location.reload(), 1000);
+                    progressFill.style.width = '100%';
+                    status.textContent = '✓ Synced! Videos: ' + result.videos_count + ', Comments: ' + result.comments_count;
+                    setTimeout(() => location.reload(), 700);
                 } else {
-                    status.textContent = ' Error during sync';
+                    status.textContent = 'Error during sync';
                 }
             } catch (error) {
-                status.textContent = ' Error: ' + error;
+                status.textContent = 'Error: ' + error;
             } finally {
+                if (timer) {
+                    clearInterval(timer);
+                }
+                if (!status.textContent.startsWith('✓')) {
+                    progress.classList.remove('show');
+                    progressFill.style.width = '0%';
+                }
                 btn.disabled = false;
             }
         }
@@ -582,6 +932,28 @@ TEMPLATE_VIDEO_DETAIL = """
         .pagination a:hover { background: #f2f6ff; }
         .pagination .current { background: #007bff; color: #fff; border-color: #007bff; }
         .pagination .disabled { color: #999; }
+        .transcript-section { margin-top: 36px; }
+        .transcript-meta { color: #555; font-size: 0.9em; margin-bottom: 10px; }
+        .report-box {
+            background: #f7fbff;
+            border: 1px solid #d9e8f8;
+            border-radius: 6px;
+            padding: 14px;
+            white-space: pre-wrap;
+            line-height: 1.45;
+            font-family: Consolas, "Courier New", monospace;
+            font-size: 0.92em;
+        }
+        .pdf-download-btn {
+            display: inline-block;
+            margin-top: 12px;
+            padding: 9px 14px;
+            background: #0d6efd;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+        }
+        .pdf-download-btn:hover { background: #0b5ed7; }
     </style>
 </head>
 <body>
@@ -665,6 +1037,23 @@ TEMPLATE_VIDEO_DETAIL = """
                 {% endif %}
             {% else %}
                 <p>No product-related comments found.</p>
+            {% endif %}
+        </div>
+
+        <div class="transcript-section">
+            <h2>Transcript Report (No LLM)</h2>
+            {% if transcript_row %}
+                <div class="transcript-meta">
+                    Language: {{ transcript_row.language_code or 'unknown' }} |
+                    Segments: {{ transcript_row.segment_count or 0 }} |
+                    Updated: {{ transcript_row.updated_at }}
+                </div>
+                <div class="report-box">{{ transcript_report }}</div>
+                <a class="pdf-download-btn" href="/products/{{ product_id }}/videos/{{ video.video_id }}/transcript-report.pdf">
+                    Download PDF Report
+                </a>
+            {% else %}
+                <p>Transcript report is unavailable for this video. This usually means the video has no accessible subtitles/captions, or subtitle access is restricted by YouTube.</p>
             {% endif %}
         </div>
     </div>
@@ -766,6 +1155,7 @@ async def sync_product_videos(product_id: int, data: dict = None):
     videos = fetch_product_videos(product["name"], max_results=max_results)
     videos_count = 0
     comments_count = 0
+    transcripts_count = 0
     
     for video in videos:
         # UPSERT video
@@ -829,11 +1219,35 @@ async def sync_product_videos(product_id: int, data: dict = None):
                        VALUES (%s, %s, %s)""",
                     (comment["comment_id"], sentiment_label, sentiment_score)
                 )
+
+        # Fetch and store transcript
+        transcript = fetch_video_transcript(video["video_id"])
+        if transcript:
+            execute_update(
+                """INSERT INTO video_transcripts (video_id, transcript_text, language_code, segment_count, source)
+                   VALUES (%s, %s, %s, %s, %s)
+                   ON CONFLICT (video_id)
+                   DO UPDATE SET
+                     transcript_text = EXCLUDED.transcript_text,
+                     language_code = EXCLUDED.language_code,
+                     segment_count = EXCLUDED.segment_count,
+                     source = EXCLUDED.source,
+                     updated_at = NOW()""",
+                (
+                    video["video_id"],
+                    transcript["transcript_text"],
+                    transcript["language_code"],
+                    transcript["segment_count"],
+                    "youtube_transcript_api",
+                ),
+            )
+            transcripts_count += 1
     
     return {
         "status": "success",
         "videos_count": videos_count,
         "comments_count": comments_count,
+        "transcripts_count": transcripts_count,
     }
 
 
@@ -887,6 +1301,40 @@ async def video_detail(request: Request, product_id: int, video_id: str, page: i
     )
     
     sentiment_map = {row["sentiment_label"]: row["count"] for row in sentiment_counts}
+
+    transcript_row = query_one(
+        "SELECT transcript_text, language_code, segment_count, updated_at FROM video_transcripts WHERE video_id = %s",
+        (video_id,),
+    )
+
+    # Auto-recover missing transcript once at page load so users can see report without re-sync.
+    if not transcript_row:
+        fetched_transcript = fetch_video_transcript(video_id)
+        if fetched_transcript:
+            execute_update(
+                """INSERT INTO video_transcripts (video_id, transcript_text, language_code, segment_count, source)
+                   VALUES (%s, %s, %s, %s, %s)
+                   ON CONFLICT (video_id)
+                   DO UPDATE SET
+                     transcript_text = EXCLUDED.transcript_text,
+                     language_code = EXCLUDED.language_code,
+                     segment_count = EXCLUDED.segment_count,
+                     source = EXCLUDED.source,
+                     updated_at = NOW()""",
+                (
+                    video_id,
+                    fetched_transcript["transcript_text"],
+                    fetched_transcript["language_code"],
+                    fetched_transcript["segment_count"],
+                    "youtube_transcript_api",
+                ),
+            )
+            transcript_row = query_one(
+                "SELECT transcript_text, language_code, segment_count, updated_at FROM video_transcripts WHERE video_id = %s",
+                (video_id,),
+            )
+
+    transcript_report = build_transcript_report(transcript_row["transcript_text"]) if transcript_row else None
     
     return templates.TemplateResponse("video_detail.html", {
         "request": request,
@@ -901,7 +1349,37 @@ async def video_detail(request: Request, product_id: int, video_id: str, page: i
         "sentiment_positive": sentiment_map.get("positive", 0),
         "sentiment_neutral": sentiment_map.get("neutral", 0),
         "sentiment_negative": sentiment_map.get("negative", 0),
+        "transcript_row": transcript_row,
+        "transcript_report": transcript_report,
     })
+
+
+@app.get("/products/{product_id}/videos/{video_id}/transcript-report.pdf")
+async def download_transcript_report(product_id: int, video_id: str):
+    """Generate and download transcript report as PDF."""
+    video = query_one(
+        "SELECT * FROM videos WHERE video_id = %s AND product_id = %s",
+        (video_id, product_id),
+    )
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+
+    transcript_row = query_one(
+        "SELECT transcript_text FROM video_transcripts WHERE video_id = %s",
+        (video_id,),
+    )
+    if not transcript_row:
+        raise HTTPException(status_code=404, detail="Transcript not found")
+
+    report_text = build_transcript_report(transcript_row["transcript_text"])
+    pdf_bytes = render_report_pdf(video.get("title", "Unknown Video"), report_text)
+
+    filename = f"transcript_report_{video_id}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 # ============================================================================
@@ -909,4 +1387,14 @@ async def video_detail(request: Request, product_id: int, video_id: str, page: i
 # ============================================================================
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    import sys
+    port = int(os.getenv("PORT", 8000))
+    
+    # Allow command line override: python main.py 8001
+    if len(sys.argv) > 1:
+        try:
+            port = int(sys.argv[1])
+        except ValueError:
+            pass
+    
+    uvicorn.run(app, host="0.0.0.0", port=port)
