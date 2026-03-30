@@ -39,6 +39,7 @@
         .pagination .current { background: #007bff; color: #fff; border-color: #007bff; }
         .pagination .disabled { color: #999; }
         .transcript-section { margin-top: 36px; }
+        .comment-sentiment-section { margin-top: 36px; }
         .transcript-meta { color: #555; font-size: 0.9em; margin-bottom: 10px; }
         .report-box {
             background: #f7fbff;
@@ -160,6 +161,15 @@
                 </a>
             {% else %}
                 <p>Transcript report is unavailable for this video. This usually means the video has no accessible subtitles/captions, or subtitle access is restricted by YouTube.</p>
+            {% endif %}
+        </div>
+
+        <div class="comment-sentiment-section">
+            <h2>📊 Comment Reaction Analysis</h2>
+            {% if comment_sentiment_report %}
+                <div class="report-box">{{ comment_sentiment_report }}</div>
+            {% else %}
+                <p>Comment reaction analysis is unavailable. This may occur if there are insufficient product-related comments or if the analysis service is temporarily unavailable.</p>
             {% endif %}
         </div>
     </div>

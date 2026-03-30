@@ -23,7 +23,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 import httpx
 import uvicorn
-from prompt_manager import build_transcript_report_prompt
+from prompt_manager import build_transcript_report_prompt, build_comment_sentiment_report_prompt
 
 try:
     from youtube_transcript_api import YouTubeTranscriptApi
@@ -557,6 +557,79 @@ def build_transcript_report(transcript_text: str) -> str:
     return build_transcript_report_heuristic(normalized)
 
 
+def build_comment_sentiment_report(video_id: str, product_name: str = "제품") -> Optional[str]:
+    """
+    Build comment sentiment analysis report with Gemini.
+    Aggregates comments by sentiment_label and generates analysis.
+    """
+    try:
+        conn = psycopg2.connect(DATABASE_URL)
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Query comments for this video grouped by sentiment_label
+        cur.execute("""
+            SELECT cs.sentiment_label, c.text_raw
+            FROM comments c
+            LEFT JOIN comment_sentiments cs ON c.comment_id = cs.comment_id
+            WHERE c.video_id = %s AND c.is_product_related = TRUE
+            ORDER BY cs.sentiment_label, c.created_at DESC
+        """, (video_id,))
+        
+        comments = cur.fetchall()
+        cur.close()
+        conn.close()
+        
+        if not comments:
+            return None
+        
+        # Group comments by sentiment
+        sentiment_map = {"positive": [], "neutral": [], "negative": []}
+        for comment in comments:
+            label = comment.get("sentiment_label", "neutral") or "neutral"
+            text = comment.get("text_raw", "")
+            if text and label in sentiment_map:
+                sentiment_map[label].append(text)
+        
+        # Build comment text summaries (limit to first 5 comments per sentiment, max 1000 chars total per sentiment)
+        def build_comment_summary(texts: List[str]) -> str:
+            if not texts:
+                return "[해당 감정의 댓글 없음]"
+            sample = texts[:5]  # First 5 comments
+            combined = " | ".join(sample)
+            return combined[:1000] if len(combined) > 1000 else combined
+        
+        positive_text = build_comment_summary(sentiment_map["positive"])
+        neutral_text = build_comment_summary(sentiment_map["neutral"])
+        negative_text = build_comment_summary(sentiment_map["negative"])
+        
+        # Call Gemini with sentiment report prompt (generate as long as there's at least one comment)
+        if genai is None or not GEMINI_API_KEY:
+            return None
+        
+        client = genai.Client(api_key=GEMINI_API_KEY)
+        prompt = build_comment_sentiment_report_prompt(
+            positive_text, neutral_text, negative_text, product_name
+        )
+        
+        response = client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=prompt,
+        )
+        
+        llm_text = getattr(response, "text", None)
+        if llm_text and llm_text.strip():
+            return llm_text.strip()
+        
+        return None
+        
+    except Exception as e:
+        # Log the error for debugging
+        import traceback
+        print(f"[ERROR] build_comment_sentiment_report: {e}")
+        traceback.print_exc()
+        return None
+
+
 def render_report_pdf(video_title: str, report_text: str) -> bytes:
     """Render report text into a downloadable PDF."""
     try:
@@ -933,6 +1006,7 @@ TEMPLATE_VIDEO_DETAIL = """
         .pagination .current { background: #007bff; color: #fff; border-color: #007bff; }
         .pagination .disabled { color: #999; }
         .transcript-section { margin-top: 36px; }
+        .comment-sentiment-section { margin-top: 36px; }
         .transcript-meta { color: #555; font-size: 0.9em; margin-bottom: 10px; }
         .report-box {
             background: #f7fbff;
@@ -1054,6 +1128,15 @@ TEMPLATE_VIDEO_DETAIL = """
                 </a>
             {% else %}
                 <p>Transcript report is unavailable for this video. This usually means the video has no accessible subtitles/captions, or subtitle access is restricted by YouTube.</p>
+            {% endif %}
+        </div>
+
+        <div class="comment-sentiment-section">
+            <h2>📊 Comment Reaction Analysis</h2>
+            {% if comment_sentiment_report %}
+                <div class="report-box">{{ comment_sentiment_report }}</div>
+            {% else %}
+                <p>Comment reaction analysis is unavailable. This may occur if there are insufficient product-related comments or if the analysis service is temporarily unavailable.</p>
             {% endif %}
         </div>
     </div>
@@ -1336,6 +1419,9 @@ async def video_detail(request: Request, product_id: int, video_id: str, page: i
 
     transcript_report = build_transcript_report(transcript_row["transcript_text"]) if transcript_row else None
     
+    # Build comment sentiment report
+    comment_sentiment_report = build_comment_sentiment_report(video_id, product["name"]) if comments else None
+    
     return templates.TemplateResponse("video_detail.html", {
         "request": request,
         "product_id": product_id,
@@ -1351,6 +1437,7 @@ async def video_detail(request: Request, product_id: int, video_id: str, page: i
         "sentiment_negative": sentiment_map.get("negative", 0),
         "transcript_row": transcript_row,
         "transcript_report": transcript_report,
+        "comment_sentiment_report": comment_sentiment_report,
     })
 
 
