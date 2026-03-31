@@ -61,6 +61,17 @@
             border-radius: 4px;
         }
         .pdf-download-btn:hover { background: #0b5ed7; }
+        .section-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+        .rewrite-btn {
+            border: 1px solid #c8d6e5;
+            background: #ffffff;
+            color: #1f4e79;
+            border-radius: 4px;
+            padding: 6px 10px;
+            cursor: pointer;
+            font-size: 0.9em;
+        }
+        .rewrite-btn:hover { background: #f2f8ff; }
     </style>
 </head>
 <body>
@@ -148,7 +159,10 @@
         </div>
 
         <div class="transcript-section">
-            <h2>Transcript Report (No LLM)</h2>
+            <div class="section-header">
+                <h2>Transcript Report</h2>
+                <button class="rewrite-btn" onclick="rewriteTranscriptReport()">Rewrite</button>
+            </div>
             {% if transcript_row %}
                 <div class="transcript-meta">
                     Language: {{ transcript_row.language_code or 'unknown' }} |
@@ -165,7 +179,10 @@
         </div>
 
         <div class="comment-sentiment-section">
-            <h2>📊 Comment Reaction Analysis</h2>
+            <div class="section-header">
+                <h2>📊 Comment Reaction Analysis</h2>
+                <button class="rewrite-btn" onclick="rewriteCommentReport()">Rewrite</button>
+            </div>
             {% if comment_sentiment_report %}
                 <div class="report-box">{{ comment_sentiment_report }}</div>
             {% else %}
@@ -173,5 +190,31 @@
             {% endif %}
         </div>
     </div>
+
+    <script>
+        async function rewriteTranscriptReport() {
+            const response = await fetch('/products/{{ product_id }}/videos/{{ video.video_id }}/rewrite-transcript-report', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+            });
+            if (!response.ok) {
+                alert('Failed to rewrite transcript report');
+                return;
+            }
+            location.reload();
+        }
+
+        async function rewriteCommentReport() {
+            const response = await fetch('/products/{{ product_id }}/videos/{{ video.video_id }}/rewrite-comment-report', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+            });
+            if (!response.ok) {
+                alert('Failed to rewrite comment report');
+                return;
+            }
+            location.reload();
+        }
+    </script>
 </body>
 </html>

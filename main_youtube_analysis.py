@@ -125,6 +125,15 @@ def init_db():
             updated_at      TIMESTAMP DEFAULT NOW()
         );
     """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS video_reports (
+            video_id            VARCHAR(64) PRIMARY KEY REFERENCES videos(video_id) ON DELETE CASCADE,
+            transcript_report   TEXT,
+            comment_report      TEXT,
+            updated_at          TIMESTAMP DEFAULT NOW()
+        );
+    """)
     
     conn.commit()
     cursor.close()
@@ -602,9 +611,52 @@ def build_comment_sentiment_report(video_id: str, product_name: str = "제품") 
         neutral_text = build_comment_summary(sentiment_map["neutral"])
         negative_text = build_comment_summary(sentiment_map["negative"])
         
+        def build_comment_sentiment_report_heuristic() -> str:
+            total = (
+                len(sentiment_map["positive"])
+                + len(sentiment_map["neutral"])
+                + len(sentiment_map["negative"])
+            )
+
+            positives = sentiment_map["positive"][:3]
+            neutrals = sentiment_map["neutral"][:3]
+            negatives = sentiment_map["negative"][:3]
+
+            lines = [
+                "[댓글 반응 기반 제품 평가보고서]",
+                f"- 대상 제품: {product_name}",
+                f"- 분석 댓글 수: {total}개",
+                "",
+                "1) 긍정 댓글 반응 요약",
+                f"- 개수: {len(sentiment_map['positive'])}개",
+                f"- 대표 반응: {(' / '.join(positives)) if positives else '긍정 댓글이 충분하지 않습니다.'}",
+                "",
+                "2) 중립 댓글 반응 요약",
+                f"- 개수: {len(sentiment_map['neutral'])}개",
+                f"- 대표 반응: {(' / '.join(neutrals)) if neutrals else '중립 댓글이 충분하지 않습니다.'}",
+                "",
+                "3) 부정 댓글 반응 요약",
+                f"- 개수: {len(sentiment_map['negative'])}개",
+                f"- 대표 반응: {(' / '.join(negatives)) if negatives else '부정 댓글이 충분하지 않습니다.'}",
+                "",
+                "4) 종합 장점 3가지",
+                "- 긍정 반응에서 반복되는 포인트를 기준으로 장점을 판단할 수 있습니다.",
+                "- 중립/긍정 댓글에서 언급된 사용성 요소가 장점 후보입니다.",
+                "- 실제 구매 전에는 최신 댓글 추이를 함께 확인하는 것이 좋습니다.",
+                "",
+                "5) 종합 단점 3가지",
+                "- 부정 반응에서 반복되는 불편 요소는 핵심 단점 후보입니다.",
+                "- 중립 댓글의 아쉬움 포인트도 잠재 단점으로 볼 수 있습니다.",
+                "- 모델/버전 차이로 체감 단점이 달라질 수 있어 교차 검증이 필요합니다.",
+                "",
+                "6) 한 줄 결론",
+                "- Gemini API 사용량 제한으로 규칙 기반 임시 보고서를 표시했습니다.",
+            ]
+            return "\n".join(lines)
+
         # Call Gemini with sentiment report prompt (generate as long as there's at least one comment)
         if genai is None or not GEMINI_API_KEY:
-            return None
+            return build_comment_sentiment_report_heuristic()
         
         client = genai.Client(api_key=GEMINI_API_KEY)
         prompt = build_comment_sentiment_report_prompt(
@@ -619,15 +671,30 @@ def build_comment_sentiment_report(video_id: str, product_name: str = "제품") 
         llm_text = getattr(response, "text", None)
         if llm_text and llm_text.strip():
             return llm_text.strip()
-        
-        return None
+
+        return build_comment_sentiment_report_heuristic()
         
     except Exception as e:
-        # Log the error for debugging
-        import traceback
+        # Log the error for debugging and fall back to a local heuristic report.
         print(f"[ERROR] build_comment_sentiment_report: {e}")
-        traceback.print_exc()
-        return None
+        return (
+            "[댓글 반응 기반 제품 평가보고서]\n"
+            "- Gemini API 호출 실패. 임시 요약을 표시합니다."
+        )
+
+
+def upsert_video_report(video_id: str, transcript_report: Optional[str] = None, comment_report: Optional[str] = None) -> None:
+    """Upsert generated reports for a video."""
+    execute_update(
+        """INSERT INTO video_reports (video_id, transcript_report, comment_report, updated_at)
+           VALUES (%s, %s, %s, NOW())
+           ON CONFLICT (video_id)
+           DO UPDATE SET
+             transcript_report = COALESCE(EXCLUDED.transcript_report, video_reports.transcript_report),
+             comment_report = COALESCE(EXCLUDED.comment_report, video_reports.comment_report),
+             updated_at = NOW()""",
+        (video_id, transcript_report, comment_report),
+    )
 
 
 def render_report_pdf(video_title: str, report_text: str) -> bytes:
@@ -1028,6 +1095,17 @@ TEMPLATE_VIDEO_DETAIL = """
             border-radius: 4px;
         }
         .pdf-download-btn:hover { background: #0b5ed7; }
+        .section-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+        .rewrite-btn {
+            border: 1px solid #c8d6e5;
+            background: #ffffff;
+            color: #1f4e79;
+            border-radius: 4px;
+            padding: 6px 10px;
+            cursor: pointer;
+            font-size: 0.9em;
+        }
+        .rewrite-btn:hover { background: #f2f8ff; }
     </style>
 </head>
 <body>
@@ -1115,7 +1193,10 @@ TEMPLATE_VIDEO_DETAIL = """
         </div>
 
         <div class="transcript-section">
-            <h2>Transcript Report (No LLM)</h2>
+            <div class="section-header">
+                <h2>Transcript Report</h2>
+                <button class="rewrite-btn" onclick="rewriteTranscriptReport()">Rewrite</button>
+            </div>
             {% if transcript_row %}
                 <div class="transcript-meta">
                     Language: {{ transcript_row.language_code or 'unknown' }} |
@@ -1132,7 +1213,10 @@ TEMPLATE_VIDEO_DETAIL = """
         </div>
 
         <div class="comment-sentiment-section">
-            <h2>📊 Comment Reaction Analysis</h2>
+            <div class="section-header">
+                <h2>📊 Comment Reaction Analysis</h2>
+                <button class="rewrite-btn" onclick="rewriteCommentReport()">Rewrite</button>
+            </div>
             {% if comment_sentiment_report %}
                 <div class="report-box">{{ comment_sentiment_report }}</div>
             {% else %}
@@ -1140,6 +1224,32 @@ TEMPLATE_VIDEO_DETAIL = """
             {% endif %}
         </div>
     </div>
+
+    <script>
+        async function rewriteTranscriptReport() {
+            const response = await fetch('/products/{{ product_id }}/videos/{{ video.video_id }}/rewrite-transcript-report', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+            });
+            if (!response.ok) {
+                alert('Failed to rewrite transcript report');
+                return;
+            }
+            location.reload();
+        }
+
+        async function rewriteCommentReport() {
+            const response = await fetch('/products/{{ product_id }}/videos/{{ video.video_id }}/rewrite-comment-report', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+            });
+            if (!response.ok) {
+                alert('Failed to rewrite comment report');
+                return;
+            }
+            location.reload();
+        }
+    </script>
 </body>
 </html>
 """
@@ -1234,6 +1344,43 @@ async def sync_product_videos(product_id: int, data: dict = None):
     
     max_results = (data or {}).get("max_results", 5)
     
+    # DELETE all existing data for this product (clean slate approach)
+    # Order matters: delete dependent tables first
+    execute_update(
+        """DELETE FROM comment_sentiments
+           WHERE comment_id IN (
+             SELECT c.comment_id FROM comments c
+             INNER JOIN videos v ON c.video_id = v.video_id
+             WHERE v.product_id = %s
+           )""",
+        (product_id,)
+    )
+    execute_update(
+        """DELETE FROM comments
+           WHERE video_id IN (
+             SELECT video_id FROM videos WHERE product_id = %s
+           )""",
+        (product_id,)
+    )
+    execute_update(
+        """DELETE FROM video_transcripts
+           WHERE video_id IN (
+             SELECT video_id FROM videos WHERE product_id = %s
+           )""",
+        (product_id,)
+    )
+    execute_update(
+        """DELETE FROM video_reports
+           WHERE video_id IN (
+             SELECT video_id FROM videos WHERE product_id = %s
+           )""",
+        (product_id,)
+    )
+    execute_update(
+        "DELETE FROM videos WHERE product_id = %s",
+        (product_id,)
+    )
+    
     # Fetch videos from YouTube
     videos = fetch_product_videos(product["name"], max_results=max_results)
     videos_count = 0
@@ -1241,47 +1388,21 @@ async def sync_product_videos(product_id: int, data: dict = None):
     transcripts_count = 0
     
     for video in videos:
-        # UPSERT video
-        existing = query_one(
-            "SELECT video_id FROM videos WHERE video_id = %s",
-            (video["video_id"],)
+        # INSERT new video
+        execute_update(
+            """INSERT INTO videos (video_id, product_id, title, description, published_at,
+               thumbnail_url, view_count, like_count, comment_count)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+            (video["video_id"], product_id, video["title"], video["description"],
+             video["published_at"], video["thumbnail_url"], video["view_count"],
+             video["like_count"], video["comment_count"])
         )
-        
-        if existing:
-            # Update
-            execute_update(
-                """UPDATE videos SET title = %s, description = %s, published_at = %s,
-                   thumbnail_url = %s, view_count = %s, like_count = %s, comment_count = %s
-                   WHERE video_id = %s""",
-                (video["title"], video["description"], video["published_at"],
-                 video["thumbnail_url"], video["view_count"], video["like_count"],
-                 video["comment_count"], video["video_id"])
-            )
-        else:
-            # Insert
-            execute_update(
-                """INSERT INTO videos (video_id, product_id, title, description, published_at,
-                   thumbnail_url, view_count, like_count, comment_count)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
-                (video["video_id"], product_id, video["title"], video["description"],
-                 video["published_at"], video["thumbnail_url"], video["view_count"],
-                 video["like_count"], video["comment_count"])
-            )
-            videos_count += 1
+        videos_count += 1
         
         # Fetch and process comments
         comments = fetch_video_comments(video["video_id"], max_pages=2)
         
         for comment in comments:
-            # Check if comment already exists
-            existing_comment = query_one(
-                "SELECT comment_id FROM comments WHERE comment_id = %s",
-                (comment["comment_id"],)
-            )
-            
-            if existing_comment:
-                continue
-            
             # Determine if product-related
             is_related = is_product_related(comment["text_raw"], product["name"])
             
@@ -1308,14 +1429,7 @@ async def sync_product_videos(product_id: int, data: dict = None):
         if transcript:
             execute_update(
                 """INSERT INTO video_transcripts (video_id, transcript_text, language_code, segment_count, source)
-                   VALUES (%s, %s, %s, %s, %s)
-                   ON CONFLICT (video_id)
-                   DO UPDATE SET
-                     transcript_text = EXCLUDED.transcript_text,
-                     language_code = EXCLUDED.language_code,
-                     segment_count = EXCLUDED.segment_count,
-                     source = EXCLUDED.source,
-                     updated_at = NOW()""",
+                   VALUES (%s, %s, %s, %s, %s)""",
                 (
                     video["video_id"],
                     transcript["transcript_text"],
@@ -1325,6 +1439,8 @@ async def sync_product_videos(product_id: int, data: dict = None):
                 ),
             )
             transcripts_count += 1
+        
+        # Reports will be generated on-demand when user views the video (video_detail page)
     
     return {
         "status": "success",
@@ -1417,10 +1533,21 @@ async def video_detail(request: Request, product_id: int, video_id: str, page: i
                 (video_id,),
             )
 
-    transcript_report = build_transcript_report(transcript_row["transcript_text"]) if transcript_row else None
+    report_row = query_one(
+        "SELECT transcript_report, comment_report, updated_at FROM video_reports WHERE video_id = %s",
+        (video_id,),
+    )
+    transcript_report = report_row["transcript_report"] if report_row else None
+    comment_sentiment_report = report_row["comment_report"] if report_row else None
     
-    # Build comment sentiment report
-    comment_sentiment_report = build_comment_sentiment_report(video_id, product["name"]) if comments else None
+    # Generate reports on-demand if not already generated
+    if not transcript_report and transcript_row:
+        transcript_report = build_transcript_report(transcript_row["transcript_text"])
+        upsert_video_report(video_id, transcript_report=transcript_report)
+    
+    if not comment_sentiment_report:
+        comment_sentiment_report = build_comment_sentiment_report(video_id, product["name"])
+        upsert_video_report(video_id, comment_report=comment_sentiment_report)
     
     return templates.TemplateResponse("video_detail.html", {
         "request": request,
@@ -1439,6 +1566,50 @@ async def video_detail(request: Request, product_id: int, video_id: str, page: i
         "transcript_report": transcript_report,
         "comment_sentiment_report": comment_sentiment_report,
     })
+
+
+@app.post("/products/{product_id}/videos/{video_id}/rewrite-transcript-report")
+async def rewrite_transcript_report(product_id: int, video_id: str):
+    """Regenerate and persist transcript report for a video."""
+    video = query_one(
+        "SELECT * FROM videos WHERE video_id = %s AND product_id = %s",
+        (video_id, product_id),
+    )
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+
+    transcript_row = query_one(
+        "SELECT transcript_text FROM video_transcripts WHERE video_id = %s",
+        (video_id,),
+    )
+    if not transcript_row:
+        raise HTTPException(status_code=404, detail="Transcript not found")
+
+    report_text = build_transcript_report(transcript_row["transcript_text"])
+    upsert_video_report(video_id, transcript_report=report_text)
+    return {"status": "success", "type": "transcript"}
+
+
+@app.post("/products/{product_id}/videos/{video_id}/rewrite-comment-report")
+async def rewrite_comment_report(product_id: int, video_id: str):
+    """Regenerate and persist comment sentiment report for a video."""
+    product = query_one("SELECT * FROM tech_products WHERE product_id = %s", (product_id,))
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    video = query_one(
+        "SELECT * FROM videos WHERE video_id = %s AND product_id = %s",
+        (video_id, product_id),
+    )
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+
+    report_text = build_comment_sentiment_report(video_id, product["name"])
+    if not report_text:
+        raise HTTPException(status_code=404, detail="No product-related comments found")
+
+    upsert_video_report(video_id, comment_report=report_text)
+    return {"status": "success", "type": "comment"}
 
 
 @app.get("/products/{product_id}/videos/{video_id}/transcript-report.pdf")
