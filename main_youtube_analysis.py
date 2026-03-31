@@ -31,16 +31,16 @@ except ImportError:
     YouTubeTranscriptApi = None
 
 try:
-    from google import genai
+    import anthropic
 except ImportError:
-    genai = None
+    anthropic = None
 
 # Load environment variables
 load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/techdb")
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY", "")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3-flash-preview")
+CLAUDE_API_KEY = os.getenv("CLAUDE_API_KEY", "")
+CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-3-5-sonnet-20241022")
 
 # ============================================================================
 # DATABASE LAYER
@@ -539,25 +539,31 @@ def build_transcript_report_heuristic(transcript_text: str) -> str:
 
 def build_transcript_report(transcript_text: str) -> str:
     """
-    Build transcript report with Gemini first, then fallback to heuristic analysis.
+    Build transcript report with Claude first, then fallback to heuristic analysis.
     """
     normalized = re.sub(r"\s+", " ", transcript_text or "").strip()
     if not normalized:
         return "No transcript content available."
+    
+    # Limit transcript to first 2000 chars to reduce token usage
+    normalized = normalized[:2000]
 
-    if genai is None or not GEMINI_API_KEY:
+    if anthropic is None or not CLAUDE_API_KEY:
         return build_transcript_report_heuristic(normalized)
 
     try:
-        client = genai.Client(api_key=GEMINI_API_KEY)
+        client = anthropic.Anthropic(api_key=CLAUDE_API_KEY)
         prompt = build_transcript_report_prompt(normalized)
 
-        response = client.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=prompt,
+        response = client.messages.create(
+            model=CLAUDE_MODEL,
+            max_tokens=300,
+            messages=[
+                {"role": "user", "content": prompt}
+            ]
         )
 
-        llm_text = getattr(response, "text", None)
+        llm_text = response.content[0].text if response.content else None
         if llm_text and llm_text.strip():
             return llm_text.strip()
     except Exception:
@@ -566,10 +572,78 @@ def build_transcript_report(transcript_text: str) -> str:
     return build_transcript_report_heuristic(normalized)
 
 
+def analyze_sentiment_batch(comments: List[str], sentiment_type: str, product_name: str) -> str:
+    """
+    Analyze a batch of comments for a specific sentiment.
+    Returns a summary of that sentiment's characteristics.
+    """
+    if not comments:
+        return f"[{sentiment_type} 댓글 없음]"
+    
+    # Limit to first 3 comments, 100 chars each
+    sample = comments[:3]
+    sample = [text[:100] for text in sample]
+    comments_text = " | ".join(sample)
+    
+    if anthropic is None or not CLAUDE_API_KEY:
+        return f"{sentiment_type} 댓글: {comments_text}"
+    
+    try:
+        client = anthropic.Anthropic(api_key=CLAUDE_API_KEY)
+        prompt = (
+            f"다음 {product_name} 관련 {sentiment_type} 댓글들의 공통점을 50자 이내로 요약해줘.\\n"
+            f"댓글: {comments_text}"
+        )
+        
+        response = client.messages.create(
+            model=CLAUDE_MODEL,
+            max_tokens=100,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        
+        return response.content[0].text if response.content else f"{sentiment_type} 분석 불가"
+    except Exception as e:
+        print(f"[ERROR] analyze_sentiment_batch ({sentiment_type}): {e}")
+        return f"{sentiment_type}: {comments_text}"
+
+
+def consolidate_sentiment_reports(positive_summary: str, negative_summary: str, product_name: str) -> str:
+    """
+    Consolidate individual sentiment summaries into a final report.
+    """
+    if anthropic is None or not CLAUDE_API_KEY:
+        return (
+            f"[{product_name} 댓글 반응 기반 평가보고서]\\n"
+            f"- 긍정: {positive_summary}\\n"
+            f"- 부정: {negative_summary}"
+        )
+    
+    try:
+        client = anthropic.Anthropic(api_key=CLAUDE_API_KEY)
+        prompt = (
+            f"{product_name}에 대한 댓글 분석 결과를 바탕으로 300자 이내의 평가보고서를 작성해줘.\\n"
+            f"첫 줄: [댓글 반응 기반 평가보고서]\\n"
+            f"긍정 의견: {positive_summary}\\n"
+            f"부정 의견: {negative_summary}\\n"
+            f"출력: 장단점과 결론만 간단하게"
+        )
+        
+        response = client.messages.create(
+            model=CLAUDE_MODEL,
+            max_tokens=300,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        
+        return response.content[0].text if response.content else f"[{product_name} 댓글 분석] 긍정: {positive_summary}, 부정: {negative_summary}"
+    except Exception as e:
+        print(f"[ERROR] consolidate_sentiment_reports: {e}")
+        return f"[{product_name} 댓글 반응]\\n- 긍정: {positive_summary}\\n- 부정: {negative_summary}"
+
+
 def build_comment_sentiment_report(video_id: str, product_name: str = "제품") -> Optional[str]:
     """
-    Build comment sentiment analysis report with Gemini.
-    Aggregates comments by sentiment_label and generates analysis.
+    Build comment sentiment analysis report using heuristic analysis.
+    No API calls - pure rule-based summarization for cost efficiency.
     """
     try:
         conn = psycopg2.connect(DATABASE_URL)
@@ -599,88 +673,43 @@ def build_comment_sentiment_report(video_id: str, product_name: str = "제품") 
             if text and label in sentiment_map:
                 sentiment_map[label].append(text)
         
-        # Build comment text summaries (limit to first 5 comments per sentiment, max 1000 chars total per sentiment)
-        def build_comment_summary(texts: List[str]) -> str:
-            if not texts:
-                return "[해당 감정의 댓글 없음]"
-            sample = texts[:5]  # First 5 comments
-            combined = " | ".join(sample)
-            return combined[:1000] if len(combined) > 1000 else combined
+        # Build heuristic summary without API calls
+        pos_count = len(sentiment_map["positive"])
+        neg_count = len(sentiment_map["negative"])
+        total = pos_count + len(sentiment_map["neutral"]) + neg_count
         
-        positive_text = build_comment_summary(sentiment_map["positive"])
-        neutral_text = build_comment_summary(sentiment_map["neutral"])
-        negative_text = build_comment_summary(sentiment_map["negative"])
+        if total == 0:
+            return None
         
-        def build_comment_sentiment_report_heuristic() -> str:
-            total = (
-                len(sentiment_map["positive"])
-                + len(sentiment_map["neutral"])
-                + len(sentiment_map["negative"])
-            )
-
-            positives = sentiment_map["positive"][:3]
-            neutrals = sentiment_map["neutral"][:3]
-            negatives = sentiment_map["negative"][:3]
-
-            lines = [
-                "[댓글 반응 기반 제품 평가보고서]",
-                f"- 대상 제품: {product_name}",
-                f"- 분석 댓글 수: {total}개",
-                "",
-                "1) 긍정 댓글 반응 요약",
-                f"- 개수: {len(sentiment_map['positive'])}개",
-                f"- 대표 반응: {(' / '.join(positives)) if positives else '긍정 댓글이 충분하지 않습니다.'}",
-                "",
-                "2) 중립 댓글 반응 요약",
-                f"- 개수: {len(sentiment_map['neutral'])}개",
-                f"- 대표 반응: {(' / '.join(neutrals)) if neutrals else '중립 댓글이 충분하지 않습니다.'}",
-                "",
-                "3) 부정 댓글 반응 요약",
-                f"- 개수: {len(sentiment_map['negative'])}개",
-                f"- 대표 반응: {(' / '.join(negatives)) if negatives else '부정 댓글이 충분하지 않습니다.'}",
-                "",
-                "4) 종합 장점 3가지",
-                "- 긍정 반응에서 반복되는 포인트를 기준으로 장점을 판단할 수 있습니다.",
-                "- 중립/긍정 댓글에서 언급된 사용성 요소가 장점 후보입니다.",
-                "- 실제 구매 전에는 최신 댓글 추이를 함께 확인하는 것이 좋습니다.",
-                "",
-                "5) 종합 단점 3가지",
-                "- 부정 반응에서 반복되는 불편 요소는 핵심 단점 후보입니다.",
-                "- 중립 댓글의 아쉬움 포인트도 잠재 단점으로 볼 수 있습니다.",
-                "- 모델/버전 차이로 체감 단점이 달라질 수 있어 교차 검증이 필요합니다.",
-                "",
-                "6) 한 줄 결론",
-                "- Gemini API 사용량 제한으로 규칙 기반 임시 보고서를 표시했습니다.",
-            ]
-            return "\n".join(lines)
-
-        # Call Gemini with sentiment report prompt (generate as long as there's at least one comment)
-        if genai is None or not GEMINI_API_KEY:
-            return build_comment_sentiment_report_heuristic()
+        lines = [
+            f"[{product_name} 댓글 반응 분석]",
+        ]
         
-        client = genai.Client(api_key=GEMINI_API_KEY)
-        prompt = build_comment_sentiment_report_prompt(
-            positive_text, neutral_text, negative_text, product_name
-        )
+        # Add sentiment summary
+        if pos_count > 0:
+            pos_sample = sentiment_map["positive"][:2]
+            pos_text = " | ".join(pos_sample)[:100]
+            lines.append(f"긍정({pos_count}): {pos_text}")
         
-        response = client.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=prompt,
-        )
+        if neg_count > 0:
+            neg_sample = sentiment_map["negative"][:2]
+            neg_text = " | ".join(neg_sample)[:100]
+            lines.append(f"부정({neg_count}): {neg_text}")
         
-        llm_text = getattr(response, "text", None)
-        if llm_text and llm_text.strip():
-            return llm_text.strip()
-
-        return build_comment_sentiment_report_heuristic()
+        # Add simple conclusion based on ratio
+        if pos_count > neg_count * 2:
+            lines.append("→ 긍정 반응 우세")
+        elif neg_count > pos_count * 2:
+            lines.append("→ 부정 반응 우세")
+        else:
+            lines.append("→ 신중한 검토 필요")
+        
+        result = "\\n".join(lines)
+        return result[:300] if len(result) > 300 else result
         
     except Exception as e:
-        # Log the error for debugging and fall back to a local heuristic report.
         print(f"[ERROR] build_comment_sentiment_report: {e}")
-        return (
-            "[댓글 반응 기반 제품 평가보고서]\n"
-            "- Gemini API 호출 실패. 임시 요약을 표시합니다."
-        )
+        return None
 
 
 def upsert_video_report(video_id: str, transcript_report: Optional[str] = None, comment_report: Optional[str] = None) -> None:
