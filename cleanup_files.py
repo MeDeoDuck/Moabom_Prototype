@@ -59,8 +59,9 @@ SAFE_TO_DELETE = [
     # 중복 파일 (이제 scripts/utils/에 있음)
     "prompt_manager.py",
     
-    # 원본 파일 (모듈화로 대체됨 - 백업용으로 남길지 선택)
-    # "main_youtube_analysis.py",  # 주석 해제하면 삭제됨
+    # 원본 파일들 (모듈화로 완전히 대체됨 - Git에 커밋됨)
+    "main_youtube_analysis.py",  # 원본 1778줄 파일
+    "main.py",                    # 이전 메인 파일
     
     # 데이터 파일
     "videos.csv",
