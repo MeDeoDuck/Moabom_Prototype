@@ -6,6 +6,7 @@ from scripts.database.queries import query_one, query_all, execute_update, execu
 from scripts.database.connection import get_connection
 from scripts.youtube.video_service import fetch_product_videos
 from scripts.youtube.comment_service import fetch_video_comments
+from scripts.analysis.sentiment import analyze_sentiment
 
 
 def register_sync_routes(app):
@@ -108,34 +109,10 @@ def register_sync_routes(app):
                         (comment["comment_id"], video["video_id"], comment["text_raw"], True)
                     )
                     comments_count += 1
-                    
+
                     # Analyze sentiment immediately during sync
-                    comment_text = comment["text_raw"].lower()
-                    positive_keywords = {
-                        "좋다", "훌륭", "추천", "완벽", "최고", "멋진", "빠르다", "빠른", "강력", "강력한",
-                        "좋은", "좋습니다", "훌륭합니다", "amazing", "great", "excellent", "awesome",
-                        "best", "love", "perfect", "worth", "impressed", "beautiful", "fast", "powerful"
-                    }
-                    
-                    negative_keywords = {
-                        "나쁘다", "문제", "느리다", "느린", "비싸다", "비싼", "약하다", "약한", "못쓸",
-                        "망했", "실망", "후회", "환불", "bad", "terrible", "poor", "awful", "slow",
-                        "expensive", "waste", "regret", "disappointing", "broken", "fragile"
-                    }
-                    
-                    pos_count = sum(1 for kw in positive_keywords if kw in comment_text)
-                    neg_count = sum(1 for kw in negative_keywords if kw in comment_text)
-                    
-                    if pos_count > neg_count:
-                        sentiment_label = "positive"
-                        sentiment_score = 0.7
-                    elif neg_count > pos_count:
-                        sentiment_label = "negative"
-                        sentiment_score = 0.3
-                    else:
-                        sentiment_label = "neutral"
-                        sentiment_score = 0.5
-                    
+                    sentiment_label, sentiment_score = analyze_sentiment(comment["text_raw"])
+
                     # Save sentiment to DB
                     try:
                         conn = get_connection()

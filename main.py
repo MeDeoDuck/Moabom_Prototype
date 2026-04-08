@@ -6,13 +6,16 @@ Main entry point for the FastAPI application.
 All functionality is modularized into scripts/ folder.
 
 Usage:
-    python main_youtube_tech_review.py
-    python main_youtube_tech_review.py 8001  # custom port
+    python main.py
+    python main.py 8001  # custom port
 """
 import os
 import sys
 import uvicorn
 from pathlib import Path
+
+# Force UTF-8 stdout so Korean text and emoji print correctly on Windows cp949 consoles
+sys.stdout.reconfigure(encoding="utf-8")
 from fastapi import FastAPI
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -76,7 +79,7 @@ print("[STARTUP] All routes registered")
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
     
-    # Allow command line override: python main_youtube_tech_review.py 8001
+    # Allow command line override: python main.py 8001
     if len(sys.argv) > 1:
         try:
             port = int(sys.argv[1])
