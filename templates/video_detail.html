@@ -49,11 +49,23 @@
             border: 1px solid #d9e8f8;
             border-radius: 6px;
             padding: 14px;
-            white-space: pre-wrap;
-            line-height: 1.45;
-            font-family: Consolas, "Courier New", monospace;
-            font-size: 0.92em;
+            line-height: 1.6;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            font-size: 0.95em;
         }
+        .report-box h1, .report-box h2, .report-box h3 {
+            margin-top: 16px;
+            margin-bottom: 10px;
+            color: #2c3e50;
+        }
+        .report-box h1 { font-size: 1.5em; border-bottom: 2px solid #3498db; padding-bottom: 5px; }
+        .report-box h2 { font-size: 1.3em; color: #34495e; }
+        .report-box h3 { font-size: 1.1em; color: #7f8c8d; }
+        .report-box p { margin: 10px 0; }
+        .report-box ul { margin: 10px 0; padding-left: 25px; }
+        .report-box li { margin: 5px 0; }
+        .report-box strong { font-weight: bold; color: #2c3e50; }
+        .report-box em { font-style: italic; }
         .pdf-download-btn {
             display: inline-block;
             margin-top: 12px;
@@ -162,7 +174,7 @@
                     Segments: {{ transcript_row.segment_count or 0 }} |
                     Updated: {{ transcript_row.updated_at }}
                 </div>
-                <div class="report-box">{{ transcript_report }}</div>
+                <div class="report-box">{{ transcript_report|safe }}</div>
                 <a class="pdf-download-btn" href="/products/{{ product_id }}/videos/{{ video.video_id }}/transcript-report.pdf">
                     Download PDF Report
                 </a>
@@ -174,7 +186,7 @@
         <div class="comment-sentiment-section">
             <h2>📊 Comment Reaction Analysis</h2>
             {% if comment_sentiment_report %}
-                <div class="report-box">{{ comment_sentiment_report }}</div>
+                <div class="report-box">{{ comment_sentiment_report|safe }}</div>
                 <a class="pdf-download-btn" href="/products/{{ product_id }}/videos/{{ video.video_id }}/comment-report.pdf">
                     Download PDF Report
                 </a>
@@ -186,7 +198,7 @@
         <div class="comment-sentiment-section">
             <h2>🔗 Integrated Analysis: Reviewer vs. Consumer Feedback</h2>
             {% if integrated_analysis %}
-                <div class="report-box">{{ integrated_analysis }}</div>
+                <div class="report-box">{{ integrated_analysis|safe }}</div>
                 <a class="pdf-download-btn" href="/products/{{ product_id }}/videos/{{ video.video_id }}/integrated-analysis.pdf">
                     Download PDF Report
                 </a>

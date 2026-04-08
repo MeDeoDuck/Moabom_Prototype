@@ -3,10 +3,11 @@ PDF report generation service
 """
 from io import BytesIO
 from pathlib import Path
+from scripts.utils.markdown_renderer import parse_markdown_for_pdf
 
 
 def render_report_pdf(report_title: str, report_text: str) -> bytes:
-    """Render report text into a downloadable PDF with Korean support and auto page breaks."""
+    """Render report text (markdown) into a downloadable PDF with Korean support and proper formatting."""
     try:
         from reportlab.lib.pagesizes import A4
         from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
@@ -45,7 +46,7 @@ def render_report_pdf(report_title: str, report_text: str) -> bytes:
     # Create styles
     styles = getSampleStyleSheet()
     
-    # Title style
+    # Title style (for main report title)
     title_style = ParagraphStyle(
         'CustomTitle',
         parent=styles['Heading1'],
@@ -53,6 +54,42 @@ def render_report_pdf(report_title: str, report_text: str) -> bytes:
         fontSize=14,
         textColor='black',
         spaceAfter=12,
+        alignment=0,
+    )
+    
+    # H1 style
+    h1_style = ParagraphStyle(
+        'CustomH1',
+        parent=styles['Heading1'],
+        fontName=title_font,
+        fontSize=13,
+        textColor='black',
+        spaceAfter=10,
+        spaceBefore=10,
+        alignment=0,
+    )
+    
+    # H2 style
+    h2_style = ParagraphStyle(
+        'CustomH2',
+        parent=styles['Heading2'],
+        fontName=title_font,
+        fontSize=11,
+        textColor='black',
+        spaceAfter=8,
+        spaceBefore=8,
+        alignment=0,
+    )
+    
+    # H3 style
+    h3_style = ParagraphStyle(
+        'CustomH3',
+        parent=styles['Heading3'],
+        fontName=title_font,
+        fontSize=10,
+        textColor='black',
+        spaceAfter=6,
+        spaceBefore=6,
         alignment=0,
     )
     
@@ -65,20 +102,42 @@ def render_report_pdf(report_title: str, report_text: str) -> bytes:
         leading=11,
         alignment=0,
     )
+    
+    # Bullet style
+    bullet_style = ParagraphStyle(
+        'CustomBullet',
+        parent=styles['Normal'],
+        fontName=body_font,
+        fontSize=9,
+        leading=11,
+        leftIndent=15,
+        bulletIndent=5,
+        alignment=0,
+    )
 
     # Build content
     story = []
     
-    # Add title
+    # Add main title
     story.append(Paragraph(report_title, title_style))
     story.append(Spacer(1, 12))
     
-    # Add body text - split by paragraphs
-    for paragraph in report_text.split("\n"):
-        if not paragraph.strip():
+    # Parse markdown and add styled content
+    parsed_content = parse_markdown_for_pdf(report_text)
+    
+    for style_type, content in parsed_content:
+        if style_type == 'blank':
             story.append(Spacer(1, 6))
-        else:
-            story.append(Paragraph(paragraph, body_style))
+        elif style_type == 'h1':
+            story.append(Paragraph(content, h1_style))
+        elif style_type == 'h2':
+            story.append(Paragraph(content, h2_style))
+        elif style_type == 'h3':
+            story.append(Paragraph(content, h3_style))
+        elif style_type == 'bullet':
+            story.append(Paragraph(f'• {content}', bullet_style))
+        else:  # body
+            story.append(Paragraph(content, body_style))
             story.append(Spacer(1, 4))
 
     # Build PDF

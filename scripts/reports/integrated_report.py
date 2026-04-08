@@ -132,23 +132,20 @@ def generate_and_save_all_reports(video_id: str, product_name: str, force_rewrit
     
     print(f"[REPORT] START: video_id={video_id}, product={product_name}, force_rewrite={force_rewrite}")
     
-    # Check if reports already exist
+    # Check if reports already exist (transcript_report 하나라도 있으면 캐시 사용)
     if not force_rewrite:
         existing_reports = query_one(
-            """SELECT transcript_report, comment_report, integrated_report, updated_at 
+            """SELECT transcript_report, comment_report, integrated_report, updated_at
                FROM video_reports WHERE video_id = %s""",
             (video_id,)
         )
-        if existing_reports:
-            if (existing_reports.get("transcript_report") and 
-                existing_reports.get("comment_report") and 
-                existing_reports.get("integrated_report")):
-                print(f"[REPORT] Using cached reports (updated: {existing_reports.get('updated_at')})")
-                return (
-                    existing_reports.get("transcript_report"),
-                    existing_reports.get("comment_report"),
-                    existing_reports.get("integrated_report")
-                )
+        if existing_reports and existing_reports.get("transcript_report"):
+            print(f"[REPORT] Using cached reports (updated: {existing_reports.get('updated_at')})")
+            return (
+                existing_reports.get("transcript_report"),
+                existing_reports.get("comment_report"),
+                existing_reports.get("integrated_report")
+            )
     
     print(f"[REPORT] Generating fresh reports...")
     try:

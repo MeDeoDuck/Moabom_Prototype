@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # PostgreSQL Database
   postgres:
@@ -35,7 +33,7 @@ services:
         condition: service_healthy
     volumes:
       - ./templates:/app/templates
-    command: python main_youtube_analysis.py
+    command: python main.py
 
 volumes:
   postgres_data:
