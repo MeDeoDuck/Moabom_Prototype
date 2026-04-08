@@ -9,6 +9,7 @@ from scripts.database.queries import query_one, query_all, execute_update
 from scripts.youtube.transcript_service import fetch_video_transcript
 from scripts.reports.integrated_report import generate_and_save_all_reports
 from scripts.reports.pdf_generator import render_report_pdf
+from scripts.utils.markdown_renderer import markdown_to_html
 
 templates = Jinja2Templates(directory="templates")
 
@@ -118,6 +119,11 @@ def register_video_routes(app):
             video_id, product["name"], force_rewrite=False
         )
         
+        # Convert markdown to HTML for web display
+        transcript_report_html = markdown_to_html(transcript_report) if transcript_report else None
+        comment_sentiment_report_html = markdown_to_html(comment_sentiment_report) if comment_sentiment_report else None
+        integrated_analysis_html = markdown_to_html(integrated_analysis) if integrated_analysis else None
+        
         # Get report metadata
         report_metadata = query_one(
             "SELECT updated_at FROM video_reports WHERE video_id = %s",
@@ -142,9 +148,9 @@ def register_video_routes(app):
             "sentiment_negative": sentiment_map.get("negative", 0),
             "current_sentiment": sentiment,
             "transcript_row": transcript_row,
-            "transcript_report": transcript_report,
-            "comment_sentiment_report": comment_sentiment_report,
-            "integrated_analysis": integrated_analysis,
+            "transcript_report": transcript_report_html,
+            "comment_sentiment_report": comment_sentiment_report_html,
+            "integrated_analysis": integrated_analysis_html,
             "report_updated_at": report_updated_at,
         })
     
