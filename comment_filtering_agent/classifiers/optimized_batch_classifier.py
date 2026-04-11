@@ -12,6 +12,7 @@ import asyncio
 import hashlib
 import json
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass
 from datetime import datetime
@@ -178,7 +179,8 @@ class OptimizedBatchClassifier:
         api_key: Optional[str] = None,
         batch_size: int = 10,
         confidence_threshold: float = 0.75,
-        prompt_version: str = "compact_v1"
+        prompt_version: str = "compact_v1",
+        max_concurrent: int = 3
     ):
         """
         Args:
@@ -186,6 +188,7 @@ class OptimizedBatchClassifier:
             batch_size: 배치 크기
             confidence_threshold: 재판단 임계값
             prompt_version: 프롬프트 버전
+            max_concurrent: 최대 동시 배치 요청 수
         """
         self.api_key = api_key or os.getenv("GROQ_API_KEY")
         if not self.api_key:
@@ -200,6 +203,7 @@ class OptimizedBatchClassifier:
         self.batch_size = batch_size
         self.confidence_threshold = confidence_threshold
         self.prompt_version = prompt_version
+        self.max_concurrent = max_concurrent
         self.cache = ClassificationCache()
         
         self.model = "llama-3.3-70b-versatile"
@@ -234,10 +238,22 @@ class OptimizedBatchClassifier:
             else:
                 uncached_comments.append((comment_id, text))
         
-        # 2. 캐시되지 않은 댓글만 LLM 호출
+        # 2. 캐시되지 않은 댓글만 LLM 호출 (배치 분할 + 병렬)
         llm_results = {}
         if uncached_comments:
-            llm_results = self._classify_batch_llm(uncached_comments)
+            batches: List[List[Tuple[str, str]]] = [
+                uncached_comments[i:i + self.batch_size]
+                for i in range(0, len(uncached_comments), self.batch_size)
+            ]
+
+            with ThreadPoolExecutor(max_workers=self.max_concurrent) as executor:
+                future_map = {
+                    executor.submit(self._classify_batch_llm, batch): batch
+                    for batch in batches
+                }
+                for future in as_completed(future_map):
+                    batch_result = future.result()
+                    llm_results.update(batch_result)
             
             # 3. 결과를 캐시에 저장
             for cid, text in uncached_comments:
