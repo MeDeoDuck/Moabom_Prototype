@@ -1,7 +1,7 @@
-# Google 회원가입 + 멀티테넌트(MVP) 구조도
+# Firebase Auth 기반 멀티테넌트(MVP) 구조도
 
 ## 목표
-- 회원가입/로그인을 Google OAuth로 처리
+- 회원가입/로그인을 Firebase Auth로 처리 (Google Provider 포함)
 - 회원별 데이터 분리(테넌트 분리)
 - 관리자 계정은 전체 테넌트 모니터링/감독 가능
 - 기존 댓글 분석 파이프라인은 최대한 재사용
@@ -15,7 +15,7 @@ flowchart TB
     U[User Browser] --> API[FastAPI]
     A[Admin Browser] --> API
 
-    API --> AUTH[Auth Service\nGoogle OAuth + JWT]
+    API --> AUTH[Auth Service\nFirebase ID Token 검증 + App JWT(optional)]
     API --> TENANT[Tenant Router Service\nuser_id -> tenant DB]
     API --> PIPE[Comment Analysis Pipeline\n(기존 로직 재사용)]
     API --> ADM[Admin Service]
@@ -41,14 +41,14 @@ flowchart TB
 Moabom_Prototype/
 ├─ scripts/
 │  ├─ api/
-│  │  ├─ auth.py              # Google 로그인/콜백, 토큰 발급
+│  │  ├─ auth.py              # Firebase 로그인 연동, 토큰 검증/발급
 │  │  ├─ admin.py             # 관리자 전용 API
 │  │  ├─ products.py
 │  │  ├─ sync.py              # 기존 sync (tenant connection 사용으로 변경)
 │  │  └─ videos.py
 │  │
 │  ├─ services/
-│  │  ├─ auth_service.py      # Google ID token 검증, JWT 생성
+│  │  ├─ auth_service.py      # Firebase ID Token 검증, JWT 생성(옵션)
 │  │  ├─ tenant_service.py    # user -> tenant DB 매핑/연결
 │  │  ├─ admin_service.py     # 전체 사용자/테넌트/작업 모니터링
 │  │  └─ provisioning_service.py # 신규 사용자용 tenant DB/schema 생성
@@ -93,7 +93,7 @@ users (
   id                BIGSERIAL PRIMARY KEY,
   email             VARCHAR(255) UNIQUE NOT NULL,
   name              VARCHAR(255),
-  google_sub        VARCHAR(255) UNIQUE NOT NULL, -- Google 고유 식별자
+  firebase_uid      VARCHAR(255) UNIQUE NOT NULL, -- Firebase Auth UID
   role              VARCHAR(20) NOT NULL DEFAULT 'user', -- user/admin
   is_active         BOOLEAN NOT NULL DEFAULT TRUE,
   created_at        TIMESTAMP DEFAULT NOW(),
@@ -140,25 +140,24 @@ audit_logs (
 
 ---
 
-## 6) 인증/인가 플로우 (Google)
+## 6) 인증/인가 플로우 (Firebase)
 
 ```mermaid
 sequenceDiagram
     participant B as Browser
     participant API as FastAPI
-    participant G as Google OAuth
+    participant F as Firebase Auth
     participant C as Core DB
 
-    B->>API: GET /auth/google/login
-    API->>G: Redirect (OAuth consent)
-    G-->>B: code 반환
-    B->>API: GET /auth/google/callback?code=...
-    API->>G: code -> id_token/userinfo 검증
+    B->>F: Firebase SDK 로그인 (Google Provider 포함 가능)
+    F-->>B: Firebase ID Token 발급
+    B->>API: Authorization: Bearer <Firebase ID Token>
+    API->>F: Firebase Admin SDK로 ID Token 검증
     API->>C: users upsert + tenant_registry 조회/생성
     API-->>B: JWT(access token, role, user_id)
 ```
 
-JWT claims 예:
+JWT claims 예 (앱 내부 JWT를 쓰는 경우):
 - `sub`: 내부 user_id
 - `role`: user | admin
 - `tenant_key`: tenant_42
@@ -245,7 +244,7 @@ JWT claims 예:
 ## 9) MVP 구현 순서
 
 1. Core DB 스키마 추가 (`users`, `tenant_registry`, `audit_logs`)
-2. Google OAuth 로그인/콜백 API 구현
+2. Firebase Auth 연동 (클라이언트 SDK + 서버 검증) 구현
 3. JWT 미들웨어 + role 체크
 4. tenant provisioning (첫 로그인 시 schema 생성)
 5. tenant connection router 적용
@@ -256,7 +255,8 @@ JWT claims 예:
 
 ## 10) MVP 운영 체크포인트
 
-- OAuth redirect URI 정확히 등록
+- Firebase 프로젝트/서비스 계정 키 안전 저장
+- Firebase ID Token 만료/갱신 처리
 - JWT 만료/재발급 정책
 - tenant schema 생성 실패 시 롤백
 - admin API는 반드시 role guard 적용
@@ -266,7 +266,7 @@ JWT claims 예:
 
 ## 결론
 
-MVP에서는 **Google OAuth + Schema-per-user + 관리자 read-heavy 감독 구조**가
+MVP에서는 **Firebase Auth + Schema-per-user + 관리자 read-heavy 감독 구조**가
 가장 단순하고 안전하게 시작하기 좋음.
 
 기존 분석 파이프라인은 그대로 두고, “DB 연결 컨텍스트”만 tenant별로 바꾸는 방식이

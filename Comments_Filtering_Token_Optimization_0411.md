@@ -1,5 +1,8 @@
 # Tech Product Comment Analysis Pipeline (중복 기반 다중 기준 선별 구조)
 
+# 이모지
+이모지
+
 ## 개요
 본 시스템은 YouTube 테크 제품 리뷰 댓글을 분석하기 위해  
 **다중 기준 추출 + 중복 등장 기반 선별 방식**을 사용한다.
