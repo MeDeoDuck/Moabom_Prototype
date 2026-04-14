@@ -12,6 +12,20 @@ except ImportError:
     OpenAI = None
 
 
+def _extract_validated_report(llm_text: str, min_chars: int = 180, max_chars: int = 330) -> str:
+    """Validate [END] marker and body length, then return cleaned body text."""
+    if not llm_text:
+        return ""
+    text = llm_text.strip()
+    if not text.endswith("[END]"):
+        return ""
+    body = text[:text.rfind("[END]")].strip()
+    body_len = len(body)
+    if body_len < min_chars or body_len > max_chars:
+        return ""
+    return body
+
+
 def fix_encoding(text: str) -> str:
     """Attempt to fix garbled Korean characters."""
     if not text:
@@ -190,9 +204,6 @@ def build_transcript_report(transcript_text: str) -> str:
     normalized = re.sub(r"\s+", " ", transcript_text or "").strip()
     if not normalized:
         return "No transcript content available."
-    
-    # Limit transcript to first 2000 chars to reduce token usage
-    normalized = normalized[:2000]
 
     if OpenAI is None or not GROQ_API_KEY:
         return build_transcript_report_heuristic(normalized)
@@ -202,20 +213,28 @@ def build_transcript_report(transcript_text: str) -> str:
             api_key=GROQ_API_KEY,
             base_url="https://api.groq.com/openai/v1"
         )
-        prompt = build_transcript_report_prompt(normalized)
-
-        response = client.chat.completions.create(
-            model=GROQ_MODEL,
-            max_tokens=800,
-            messages=[
-                {"role": "user", "content": prompt}
-            ]
+        base_prompt = build_transcript_report_prompt(normalized)
+        retry_prompt = (
+            "\n\n이전 응답이 형식 조건을 충족하지 않았습니다. "
+            "반드시 본문 200~300자(허용 180~330자), 마지막 줄 단독 [END]를 지켜 다시 작성하세요."
         )
 
-        llm_text = response.choices[0].message.content if response.choices else None
-        if llm_text and llm_text.strip():
-            fixed_text = fix_encoding(llm_text.strip())
-            return f"[자막 기반 제품 분석 보고서]\n\n{fixed_text}"
+        for attempt in range(2):
+            prompt = base_prompt if attempt == 0 else (base_prompt + retry_prompt)
+            response = client.chat.completions.create(
+                model=GROQ_MODEL,
+                max_tokens=800,
+                messages=[
+                    {"role": "user", "content": prompt}
+                ]
+            )
+            llm_text = response.choices[0].message.content if response.choices else None
+            validated = _extract_validated_report(llm_text or "")
+            if validated:
+                fixed_text = fix_encoding(validated)
+                return f"[자막 기반 제품 분석 보고서]\n\n{fixed_text}"
+
+        print("[WARN] Transcript analysis output format invalid after retry, falling back to heuristic")
     except Exception as e:
         print(f"[WARN] Transcript analysis failed: {e}, falling back to heuristic")
 

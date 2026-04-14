@@ -5,7 +5,7 @@ from typing import Optional
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from scripts.config import GROQ_API_KEY, GROQ_MODEL, DATABASE_URL
-from scripts.reports.transcript_report import fix_encoding
+from scripts.reports.transcript_report import fix_encoding, _extract_validated_report
 
 try:
     from openai import OpenAI
@@ -87,7 +87,8 @@ def build_comment_sentiment_report(video_id: str, product_name: str = "제품") 
 3. 중립 댓글의 특징 요약
 4. 전체 시장 반응 평가
 
-한국어로 전문적이고 객관적인 톤으로 분석해주세요. 약 500-800자.
+한국어로 전문적이고 객관적인 톤으로 분석해주세요.
+본문은 200~300자(허용 180~330자)로 작성하고, 마지막 줄에 반드시 [END]만 단독 출력하세요.
 """
                 
                 client = OpenAI(
@@ -95,18 +96,25 @@ def build_comment_sentiment_report(video_id: str, product_name: str = "제품") 
                     base_url="https://api.groq.com/openai/v1"
                 )
                 
-                response = client.chat.completions.create(
-                    model=GROQ_MODEL,
-                    max_tokens=800,
-                    messages=[{"role": "user", "content": llama_prompt}]
+                retry_prompt = (
+                    "\n\n형식이 맞지 않으면 다시 작성하세요: 본문 200~300자(허용 180~330자), 마지막 줄 [END]."
                 )
-                
-                if response.choices:
-                    llm_report = response.choices[0].message.content
-                    fixed_report = fix_encoding(llm_report)
-                    
-                    header = f"[{product_name} 유튜브 댓글 분석]\n총 분석 댓글: {total}개 (긍정: {positive_count}, 부정: {negative_count}, 중립: {neutral_count})\n"
-                    return header + "=" * 50 + "\n\n" + fixed_report
+                for attempt in range(2):
+                    prompt = llama_prompt if attempt == 0 else (llama_prompt + retry_prompt)
+                    response = client.chat.completions.create(
+                        model=GROQ_MODEL,
+                        max_tokens=800,
+                        messages=[{"role": "user", "content": prompt}]
+                    )
+                    if response.choices:
+                        llm_report = response.choices[0].message.content
+                        validated = _extract_validated_report(llm_report or "")
+                        if validated:
+                            fixed_report = fix_encoding(validated)
+                            header = f"[{product_name} 유튜브 댓글 분석]\n총 분석 댓글: {total}개 (긍정: {positive_count}, 부정: {negative_count}, 중립: {neutral_count})\n"
+                            return header + "=" * 50 + "\n\n" + fixed_report
+
+                print("[WARN] Comment report output format invalid after retry, using heuristic summary")
             except Exception as e:
                 print(f"[WARN] Llama analysis failed: {e}, using heuristic summary")
         

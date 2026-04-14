@@ -4,7 +4,7 @@ Compares reviewer (transcript) vs consumer (comments) opinions
 """
 from typing import Optional
 from scripts.config import GROQ_API_KEY, GROQ_MODEL
-from scripts.reports.transcript_report import fix_encoding
+from scripts.reports.transcript_report import fix_encoding, _extract_validated_report
 
 try:
     from openai import OpenAI
@@ -67,7 +67,9 @@ def build_integrated_analysis_report(video_id: str, product_name: str, transcrip
 - 한국어로 전문적이고 객관적인 톤 유지
 - 유사도는 반드시 백분율(%)로 명시
 - 계산 방식도 명확하게 표시
-- 약 600~800자 분량의 상세 보고서
+- 본문은 200~300자(허용 180~330자)로 간결하게 작성
+- 문장은 중간에 끊기지 않게 완결형으로 마무리
+- 마지막 줄에 반드시 [END]만 단독으로 출력
 
 보고서를 작성해주세요.
 """
@@ -78,20 +80,25 @@ def build_integrated_analysis_report(video_id: str, product_name: str, transcrip
             )
             
             print(f"[DEBUG] Sending request to Groq...")
-            response = client.chat.completions.create(
-                model=GROQ_MODEL,
-                max_tokens=1200,
-                messages=[{"role": "user", "content": integration_prompt}]
+            retry_prompt = (
+                "\n\n형식이 맞지 않으면 다시 작성하세요: 본문 200~300자(허용 180~330자), 마지막 줄 [END]."
             )
-            
-            if response.choices:
-                llm_report = response.choices[0].message.content
-                fixed_report = fix_encoding(llm_report)
-                print(f"[DEBUG] Received response from Groq, length: {len(llm_report)}")
-                header = f"[{product_name} 리뷰어-댓글 통합 분석 보고서]\n\n"
-                return header + fixed_report
-            else:
-                print(f"[DEBUG] No choices in response, using fallback")
+            for attempt in range(2):
+                prompt = integration_prompt if attempt == 0 else (integration_prompt + retry_prompt)
+                response = client.chat.completions.create(
+                    model=GROQ_MODEL,
+                    max_tokens=1200,
+                    messages=[{"role": "user", "content": prompt}]
+                )
+                if response.choices:
+                    llm_report = response.choices[0].message.content
+                    validated = _extract_validated_report(llm_report or "")
+                    if validated:
+                        fixed_report = fix_encoding(validated)
+                        print(f"[DEBUG] Received response from Groq, length: {len(llm_report)}")
+                        header = f"[{product_name} 리뷰어-댓글 통합 분석 보고서]\n\n"
+                        return header + fixed_report
+            print("[DEBUG] Integrated analysis output format invalid after retry, using fallback")
         except Exception as e:
             print(f"[WARN] Integrated analysis failed: {type(e).__name__}: {e}, using fallback")
     else:
