@@ -125,14 +125,14 @@ class AgentPolicyConfig:
     
     # 정책 플래그
     exclude_all_questions: bool = False     # 모든 질문 제외
-    allow_video_reaction_with_features: bool = False  # 제품 특성 많으면 허용
+    allow_video_reaction_with_features: bool = True  # 제품 특성 많으면 허용
     hold_instead_of_reclassify: bool = False  # 재분류 대신 보류
     
     # 1차 필터 예외 허용 (특정 사유는 2차 분류로 넘김)
     allow_llm_override_rules: List[str] = field(default_factory=list)
     
     # 최소 제품 특성 언급 수 (VIDEO_REACTION 예외 처리)
-    min_product_features_for_analysis: int = 3
+    min_product_features_for_analysis: int = 2
     
     # 재분류 우선순위
     reclassify_priority_high_confidence_threshold: float = 0.7

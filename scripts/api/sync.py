@@ -12,6 +12,7 @@ import uuid
 import random
 import re
 from datetime import datetime
+from typing import Dict, List
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
@@ -34,6 +35,10 @@ TOKEN_BUDGET_PER_VIDEO = 2000
 MAX_COMMENT_CHARS = 140
 MAX_LLM_COMMENTS = 20
 CLASSIFICATION_BATCH_SIZE = 8
+RAW_COMMENT_FETCH_LIMIT = 1000
+PREPROCESS_CANDIDATE_MIN = 250
+PREPROCESS_CANDIDATE_MAX = 300
+TOP_PER_SOURCE = 30
 
 
 def _normalize_comment_text(text: str) -> str:
@@ -58,6 +63,103 @@ def _deduplicate_comments(raw_comments):
         c.text_original = normalized
         deduped.append(c)
     return deduped
+
+
+def _spark_preprocess_comments(raw_comments, video_id: str):
+    """
+    Spark-first preprocessing (with safe Python fallback):
+    1) Remove only technical invalid rows (null/blank)
+    2) Drop exact duplicates by (video_id, author, text)
+    3) Keep text with trim-only normalization
+    4) Attach flags for downstream scoring/LLM reference (no hard-drop by flags)
+    """
+    base_rows: List[Dict] = []
+    for c in raw_comments:
+        base_rows.append({
+            "comment_id": c.comment_id,
+            "video_id": video_id,
+            "author": c.author_name or "",
+            "author_channel_id": c.author_channel_id or "",
+            "text": c.text_original,
+            "like_count": c.like_count or 0,
+            "reply_count": c.reply_count or 0,
+            "published_at": c.published_at,
+            "is_reply": c.is_reply,
+            "parent_comment_id": c.parent_comment_id,
+        })
+
+    if not base_rows:
+        return [], {"input_count": 0, "output_count": 0, "removed_null_blank": 0, "removed_duplicates": 0}
+
+    # Try Spark path first
+    try:
+        from pyspark.sql import SparkSession, functions as F
+
+        spark = SparkSession.builder.master("local[*]").appName("comment-preprocess").getOrCreate()
+        df = spark.createDataFrame(base_rows)
+
+        input_count = df.count()
+        valid_df = (
+            df
+            .filter(F.col("text").isNotNull())
+            .filter(F.trim(F.col("text")) != "")
+        )
+        valid_count = valid_df.count()
+
+        dedup_df = valid_df.dropDuplicates(["video_id", "author", "text"])
+        output_count = dedup_df.count()
+
+        processed_df = (
+            dedup_df
+            .withColumn("text_cleaned", F.trim(F.col("text")))
+            .withColumn("char_count", F.length(F.col("text_cleaned")))
+            .withColumn("is_short", F.length(F.col("text_cleaned")) < 5)
+            .withColumn("has_url", F.col("text_cleaned").rlike(r"https?://|www\\."))
+            .withColumn("is_repetitive", F.col("text_cleaned").rlike(r"^(.)\\1{9,}$"))
+        )
+
+        rows = [r.asDict(recursive=True) for r in processed_df.collect()]
+        spark.stop()
+        return rows, {
+            "input_count": input_count,
+            "output_count": output_count,
+            "removed_null_blank": max(0, input_count - valid_count),
+            "removed_duplicates": max(0, valid_count - output_count),
+        }
+    except Exception:
+        # Fallback: same semantics in Python
+        valid_rows = []
+        for r in base_rows:
+            text = r.get("text")
+            if text is None:
+                continue
+            if not str(text).strip():
+                continue
+            valid_rows.append(r)
+
+        seen = set()
+        dedup_rows = []
+        for r in valid_rows:
+            key = (r["video_id"], r["author"], r["text"])
+            if key in seen:
+                continue
+            seen.add(key)
+            dedup_rows.append(r)
+
+        for r in dedup_rows:
+            cleaned = str(r["text"]).strip()
+            r["text_cleaned"] = cleaned
+            r["char_count"] = len(cleaned)
+            r["is_short"] = len(cleaned) < 5
+            r["has_url"] = bool(re.search(r"https?://|www\.", cleaned))
+            r["is_repetitive"] = bool(re.match(r"^(.)\1{9,}$", cleaned))
+
+        return dedup_rows, {
+            "input_count": len(base_rows),
+            "output_count": len(dedup_rows),
+            "removed_null_blank": max(0, len(base_rows) - len(valid_rows)),
+            "removed_duplicates": max(0, len(valid_rows) - len(dedup_rows)),
+        }
 
 
 def _keyword_hit_count(comment_text: str, product_name: str) -> int:
@@ -94,7 +196,7 @@ def _select_comments_multicriteria(comment_items, product_name: str):
             "secondary_selected_count": 0,
         }
 
-    per_source = min(20, len(comment_items))
+    per_source = min(TOP_PER_SOURCE, len(comment_items))
     by_like = sorted(comment_items, key=lambda x: (x["like_count"], x["reply_count"]), reverse=True)[:per_source]
     by_reply = sorted(comment_items, key=lambda x: (x["reply_count"], x["like_count"]), reverse=True)[:per_source]
     by_length = sorted(comment_items, key=lambda x: len(x["comment_text"]), reverse=True)[:per_source]
@@ -183,6 +285,40 @@ def _select_comments_multicriteria(comment_items, product_name: str):
     }
 
 
+def _preprocess_candidate_pool(comment_items, product_name: str):
+    """Hard-preprocess candidates (noise/short/rejected already removed) and cap pool size."""
+    if not comment_items:
+        return [], {"input_count": 0, "output_count": 0, "trimmed_count": 0}
+
+    scored = []
+    for item in comment_items:
+        text = item["comment_text"]
+        engagement = float(item["like_count"]) + (0.7 * float(item["reply_count"]))
+        keyword_hits = _keyword_hit_count(text, product_name)
+        length_score = min(len(text), MAX_COMMENT_CHARS) / float(MAX_COMMENT_CHARS)
+        score = engagement + (2.0 * keyword_hits) + length_score
+        scored.append((score, item))
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+    selected = [item for _, item in scored[:PREPROCESS_CANDIDATE_MAX]]
+    top_preview = [
+        {
+            "comment_id": item["comment_id"],
+            "score": round(score, 3),
+            "likes": item["like_count"],
+            "replies": item["reply_count"],
+            "keyword_hits": _keyword_hit_count(item["comment_text"], product_name),
+        }
+        for score, item in scored[:5]
+    ]
+    return selected, {
+        "input_count": len(comment_items),
+        "output_count": len(selected),
+        "trimmed_count": max(0, len(comment_items) - len(selected)),
+        "top_preview": top_preview,
+    }
+
+
 def process_comments_with_agent(video_id, product_name):
     """
     Process comments using the comment filtering agent pipeline.
@@ -225,31 +361,45 @@ def process_comments_with_agent(video_id, product_name):
         "excluded": 0,
         "errors": 0
     }
+    deduped_count = 0
+    preprocessed_count = 0
+    selected_before_budget_count = 0
+    selected_after_budget_count = 0
+    classified_count = 0
     
     try:
         # Step 1: Collect comments from YouTube
-        print(f"[AGENT] Step 1: Collecting comments...")
-        raw_comments = collector.collect_comments(video_id, max_results=100)
+        print(f"[AGENT] Step 1: Collecting comments (target={RAW_COMMENT_FETCH_LIMIT})...")
+        raw_comments = collector.collect_comments(video_id, max_results=RAW_COMMENT_FETCH_LIMIT)
         stats["collected"] = len(raw_comments)
-        print(f"[AGENT] Collected {len(raw_comments)} comments")
+        print(f"[AGENT] Step 1 result: collected_count={len(raw_comments)}")
 
         if not raw_comments:
             return stats
 
-        # Preprocessing: normalization + deduplication only (no hard filtering)
-        raw_comments = _deduplicate_comments(raw_comments)
-        print(f"[AGENT] After deduplication: {len(raw_comments)} comments")
+        # Spark-style preprocessing: technical cleanup + dedup + flags
+        print("[AGENT] Step 2: Spark preprocess (technical cleanup + dedup + flags)...")
+        spark_rows, spark_diag = _spark_preprocess_comments(raw_comments, video_id)
+        deduped_count = len(spark_rows)
+        print(
+            "[AGENT] Spark preprocess summary: "
+            f"input={spark_diag['input_count']}, output={spark_diag['output_count']}, "
+            f"removed_null_blank={spark_diag['removed_null_blank']}, "
+            f"removed_duplicates={spark_diag['removed_duplicates']}"
+        )
+        print(f"[AGENT] Step 2 result: preprocessed_count={len(spark_rows)}")
         
-        # Step 2: Save to comments table and process through pipeline
+        # Step 3: Save comments + rule filtering
+        print("[AGENT] Step 3: Persisting comments + rule filter (PASS/REJECT)...")
         conn = psycopg2.connect(DATABASE_URL)
         conn.autocommit = False
         cur = conn.cursor(cursor_factory=RealDictCursor)
         
-        passed_comments = []
-        for comment_data in raw_comments:
+        candidate_comments = []
+        for row in spark_rows:
             try:
-                comment_id = comment_data.comment_id
-                comment_text = comment_data.text_original
+                comment_id = row["comment_id"]
+                comment_text = row["text_cleaned"]
                 
                 # Save to comments table (기존 테이블)
                 cur.execute("""
@@ -265,14 +415,14 @@ def process_comments_with_agent(video_id, product_name):
                         reply_count = EXCLUDED.reply_count
                 """, (
                     comment_id, video_id, comment_text,
-                    comment_data.author_name, comment_data.author_channel_id,
-                    comment_data.like_count, comment_data.reply_count,
-                    comment_data.published_at, datetime.now(), batch_id,
-                    comment_data.is_reply,
-                    comment_data.parent_comment_id  # 답글 관계 추가
+                    row["author"], row["author_channel_id"],
+                    row["like_count"], row["reply_count"],
+                    row["published_at"], datetime.now(), batch_id,
+                    row["is_reply"],
+                    row["parent_comment_id"]  # 답글 관계 추가
                 ))
                 
-                # Soft filtering strategy: always PASS to preserve representativeness
+                # Soft filtering: record PASS/REJECT, but keep all Spark-preprocessed rows as candidates
                 filter_result = rule_filter.filter_single(comment_text)
                 cur.execute("""
                     INSERT INTO rule_filter_results (
@@ -286,33 +436,69 @@ def process_comments_with_agent(video_id, product_name):
                         filtered_at = EXCLUDED.filtered_at
                 """, (
                     comment_id,
-                    'PASS',
+                    'PASS' if filter_result.is_passed else 'REJECT',
                     ','.join(filter_result.matched_rules) if filter_result.matched_rules else None,
                     ','.join([r.value for r in filter_result.reject_reason_codes]) if filter_result.reject_reason_codes else None,
                     datetime.now()
                 ))
-                stats["rule_passed"] += 1
-                passed_comments.append({
+                if filter_result.is_passed:
+                    stats["rule_passed"] += 1
+                else:
+                    stats["rule_rejected"] += 1
+
+                candidate_comments.append({
                     "comment_id": comment_id,
                     "comment_text": comment_text[:MAX_COMMENT_CHARS],
-                    "like_count": comment_data.like_count or 0,
-                    "reply_count": comment_data.reply_count or 0,
-                    "published_ts": _to_timestamp(comment_data.published_at),
-                    "filter_result": filter_result
+                    "like_count": row["like_count"] or 0,
+                    "reply_count": row["reply_count"] or 0,
+                    "published_ts": _to_timestamp(row["published_at"]),
+                    "filter_result": filter_result,
+                    "spark_flags": {
+                        "char_count": int(row.get("char_count", len(comment_text))),
+                        "is_short": bool(row.get("is_short", False)),
+                        "has_url": bool(row.get("has_url", False)),
+                        "is_repetitive": bool(row.get("is_repetitive", False)),
+                    }
                 })
                 conn.commit()
                 
             except Exception as e:
-                print(f"[AGENT] Error processing comment {comment_data.comment_id}: {e}")
+                print(f"[AGENT] Error processing comment {row.get('comment_id')}: {e}")
                 stats["errors"] += 1
                 conn.rollback()
                 import traceback
                 traceback.print_exc()
                 continue
 
+        print(
+            "[AGENT] Rule filter summary: "
+            f"passed={stats['rule_passed']}, rejected={stats['rule_rejected']}, errors={stats['errors']}"
+        )
+        print(f"[AGENT] Step 3 result: candidate_count={len(candidate_comments)}")
+
         # Step 4: Multi-criteria extraction + overlap priority + token budget
-        if passed_comments:
-            selected_meta, selection_diag = _select_comments_multicriteria(passed_comments, product_name)
+        if candidate_comments:
+            print("[AGENT] Step 4: Candidate preprocessing (score/rank cap)...")
+            preprocessed_candidates, preprocess_diag = _preprocess_candidate_pool(candidate_comments, product_name)
+            if preprocess_diag["output_count"] < PREPROCESS_CANDIDATE_MIN:
+                print(
+                    "[AGENT] Preprocess pool below recommended minimum: "
+                    f"output={preprocess_diag['output_count']} < {PREPROCESS_CANDIDATE_MIN}"
+                )
+            print(
+                "[AGENT] Preprocess summary: "
+                f"input={preprocess_diag['input_count']}, "
+                f"output={preprocess_diag['output_count']}, "
+                f"trimmed={preprocess_diag['trimmed_count']}, "
+                f"target_range={PREPROCESS_CANDIDATE_MIN}~{PREPROCESS_CANDIDATE_MAX}"
+            )
+            preprocessed_count = len(preprocessed_candidates)
+            print(f"[AGENT] Step 4 result: preprocessed_count={len(preprocessed_candidates)}")
+            if preprocess_diag.get("top_preview"):
+                print(f"[AGENT] Preprocess top_preview: {preprocess_diag['top_preview']}")
+
+            print(f"[AGENT] Step 5: Multi-criteria top-{TOP_PER_SOURCE} + overlap selection...")
+            selected_meta, selection_diag = _select_comments_multicriteria(preprocessed_candidates, product_name)
             selected_items = [m["item"] for m in selected_meta]
             print(
                 "[AGENT] Selection summary: "
@@ -323,6 +509,8 @@ def process_comments_with_agent(video_id, product_name):
                 f"secondary_selected={selection_diag['secondary_selected_count']}, "
                 f"selected_total={len(selected_items)}"
             )
+            selected_before_budget_count = len(selected_items)
+            print(f"[AGENT] Step 5 result: selected_before_budget={len(selected_items)}")
             approx_tokens = sum(max(10, len(i["comment_text"]) // 3) for i in selected_items)
             if approx_tokens > TOKEN_BUDGET_PER_VIDEO:
                 before_trim_count = len(selected_meta)
@@ -346,18 +534,23 @@ def process_comments_with_agent(video_id, product_name):
                     f"trimmed={before_trim_count - after_trim_count}, "
                     f"budget={TOKEN_BUDGET_PER_VIDEO}"
                 )
+                selected_after_budget_count = len(selected_items)
+                print(f"[AGENT] Step 5.5 result: selected_after_budget={len(selected_items)}")
             else:
                 print(
                     "[AGENT] Token budget trim: "
                     f"before={len(selected_meta)}, after={len(selected_meta)}, "
                     f"trimmed=0, budget={TOKEN_BUDGET_PER_VIDEO}"
                 )
+                selected_after_budget_count = len(selected_items)
+                print(f"[AGENT] Step 5.5 result: selected_after_budget={len(selected_items)}")
 
             if not selected_items:
                 print("[AGENT] No comments selected after token budget check")
                 return stats
 
             stats["selected_pre_llm"] = len(selected_items)
+            print(f"[AGENT] Step 6: LLM batch classification (count={len(selected_items)})...")
             print(f"[AGENT] Selected comments detail ({len(selected_meta)}):")
             for rank, meta in enumerate(selected_meta, start=1):
                 item = meta["item"]
@@ -381,8 +574,12 @@ def process_comments_with_agent(video_id, product_name):
                     f"Batch classification result size mismatch: "
                     f"{len(classification_results)} != {len(selected_items)}"
                 )
+            print(f"[AGENT] Classification summary: results={len(classification_results)}")
+            classified_count = len(classification_results)
+            print(f"[AGENT] Step 6 result: classified_count={len(classification_results)}")
 
             # Step 5/6: Agent decision + sentiment/aspect
+            print("[AGENT] Step 7: Agent decision + sentiment/aspect persistence...")
             for i, item in enumerate(selected_items):
                 try:
                     comment_id = item["comment_id"]
@@ -492,6 +689,26 @@ def process_comments_with_agent(video_id, product_name):
                     traceback.print_exc()
                     continue
             stats["selected_post_llm"] = stats["analyzed"]
+            print(
+                "[AGENT] Step 7 summary: "
+                f"analyzed={stats['analyzed']}, excluded={stats['excluded']}, errors={stats['errors']}"
+            )
+            print(
+                "[AGENT] Step 7 result: "
+                f"final_analyzed_count={stats['analyzed']}, final_excluded_count={stats['excluded']}"
+            )
+
+        print(
+            "[AGENT] FINAL FUNNEL SUMMARY: "
+            f"collected={stats['collected']} -> "
+            f"deduped={deduped_count} -> "
+            f"rule_pass={stats['rule_passed']} -> "
+            f"preprocessed={preprocessed_count} -> "
+            f"selected_before_budget={selected_before_budget_count} -> "
+            f"selected_after_budget={selected_after_budget_count} -> "
+            f"classified={classified_count} -> "
+            f"analyzed={stats['analyzed']} / excluded={stats['excluded']} / errors={stats['errors']}"
+        )
         
         conn.commit()
         cur.close()

@@ -227,69 +227,15 @@ class AgentDecisionEngine:
         classification_result: ClassificationResult
     ) -> AgentDecision:
         """PRODUCT_OPINION 처리"""
-        # 재확인 필요 체크
-        if needs_recheck:
-            decision_reasoning.append("재확인 필요 플래그 → RECLASSIFY")
-            return self._create_reclassify_decision(
-                comment=comment,
-                index=index,
-                reason="재확인 필요로 재분류 요청",
-                decision_reasoning=decision_reasoning,
-                classification_result=classification_result
-            )
-        
-        # 확신도 체크
+        # PRODUCT_OPINION은 확신도와 무관하게 분석 진행
+        # (낮은 확신도/재확인 필요는 제외 기준이 아니라 검토 플래그로 관리)
         confidence_level = self.policy.get_confidence_level(confidence)
-        
-        if confidence_level == "VERY_LOW":
-            # 매우 낮은 확신 → HOLD
-            decision_reasoning.append(f"매우 낮은 확신도 ({confidence:.2f}) → HOLD")
-            return AgentDecision(
-                index=index,
-                original_comment=comment,
-                final_action=AgentAction.HOLD,
-                final_reason=f"확신도 매우 낮음 ({confidence:.2f})",
-                is_low_confidence=True,
-                needs_human_review=True,
-                decision_reasoning=" → ".join(decision_reasoning),
-                agent_version=self.policy.version,
-                confidence_threshold=self.policy.hold_below_confidence,
-                decided_at=datetime.now(),
-                rule_filter_passed=True,
-                llm_label=classification_result.label.value,
-                llm_confidence=confidence
-            )
-        
-        elif confidence_level == "LOW":
-            # 낮은 확신 → HOLD or RECLASSIFY
-            if self.policy.hold_instead_of_reclassify:
-                decision_reasoning.append(f"낮은 확신도 ({confidence:.2f}) → HOLD")
-                return AgentDecision(
-                    index=index,
-                    original_comment=comment,
-                    final_action=AgentAction.HOLD,
-                    final_reason=f"낮은 확신도로 보류 ({confidence:.2f})",
-                    is_low_confidence=True,
-                    needs_human_review=True,
-                    decision_reasoning=" → ".join(decision_reasoning),
-                    agent_version=self.policy.version,
-                    confidence_threshold=self.policy.low_confidence_threshold,
-                    decided_at=datetime.now(),
-                    rule_filter_passed=True,
-                    llm_label=classification_result.label.value,
-                    llm_confidence=confidence
-                )
-            else:
-                decision_reasoning.append(f"낮은 확신도 ({confidence:.2f}) → RECLASSIFY")
-                return self._create_reclassify_decision(
-                    comment=comment,
-                    index=index,
-                    reason=f"낮은 확신도로 재분류 ({confidence:.2f})",
-                    decision_reasoning=decision_reasoning,
-                    classification_result=classification_result
-                )
-        
-        # HIGH or MEDIUM → ANALYZE
+
+        review_required = needs_recheck or confidence_level in {"LOW", "VERY_LOW"}
+        if needs_recheck:
+            decision_reasoning.append("재확인 필요 플래그 감지(분석은 진행)")
+        if confidence_level in {"LOW", "VERY_LOW"}:
+            decision_reasoning.append(f"낮은 확신도 ({confidence:.2f}, {confidence_level}) 감지(분석은 진행)")
         decision_reasoning.append(f"제품 평가 댓글 (확신도: {confidence:.2f}) → ANALYZE")
         
         return AgentDecision(
@@ -299,12 +245,15 @@ class AgentDecisionEngine:
             final_reason=f"제품 평가 댓글 분석 진행 (확신도: {confidence:.2f})",
             should_run_sentiment=True,
             should_run_aspect_analysis=True,
+            is_low_confidence=confidence_level in {"LOW", "VERY_LOW"},
+            needs_human_review=review_required,
             decision_reasoning=" → ".join(decision_reasoning),
             agent_version=self.policy.version,
             confidence_threshold=self.policy.high_confidence_threshold,
             decision_metadata={
                 "mentioned_features": mentioned_features,
-                "confidence_level": confidence_level
+                "confidence_level": confidence_level,
+                "needs_recheck": needs_recheck,
             },
             decided_at=datetime.now(),
             rule_filter_passed=True,

@@ -21,11 +21,14 @@ def build_integrated_analysis_report(video_id: str, product_name: str, transcrip
         print(f"[DEBUG] build_integrated_analysis_report: Missing reports - transcript: {bool(transcript_report)}, comment: {bool(comment_sentiment_report)}")
         return None
     
-    # Try Llama first
-    if OpenAI is not None and GROQ_API_KEY:
-        try:
-            print(f"[DEBUG] build_integrated_analysis_report: Starting Llama call for {product_name}")
-            integration_prompt = f"""
+    if OpenAI is None or not GROQ_API_KEY:
+        error_msg = "[ERROR] Integrated analysis generation failed: Groq Llama not configured."
+        print(error_msg)
+        return error_msg
+
+    try:
+        print(f"[DEBUG] build_integrated_analysis_report: Starting Llama call for {product_name}")
+        integration_prompt = f"""
 당신은 시장 분석 전문가입니다. 다음 두 분석을 비교하여 통합 보고서를 작성해주세요.
 
 📋 자막 기반 리뷰어 분석 (전문 리뷰어의 의견)
@@ -67,64 +70,50 @@ def build_integrated_analysis_report(video_id: str, product_name: str, transcrip
 - 한국어로 전문적이고 객관적인 톤 유지
 - 유사도는 반드시 백분율(%)로 명시
 - 계산 방식도 명확하게 표시
-- 본문은 200~300자(허용 180~330자)로 간결하게 작성
+- 본문은 1000자 이내로 간결하게 작성
 - 문장은 중간에 끊기지 않게 완결형으로 마무리
 - 마지막 줄에 반드시 [END]만 단독으로 출력
 
 보고서를 작성해주세요.
 """
             
-            client = OpenAI(
-                api_key=GROQ_API_KEY,
-                base_url="https://api.groq.com/openai/v1"
-            )
-            
-            print(f"[DEBUG] Sending request to Groq...")
+        client = OpenAI(
+            api_key=GROQ_API_KEY,
+            base_url="https://api.groq.com/openai/v1"
+        )
+
+        print(f"[DEBUG] Sending request to Groq...")
+        max_attempts = 3
+        for attempt in range(max_attempts):
             retry_prompt = (
-                "\n\n형식이 맞지 않으면 다시 작성하세요: 본문 200~300자(허용 180~330자), 마지막 줄 [END]."
+                "\n\n형식이 맞지 않으면 다시 작성하세요: "
+                "본문 1000자 이내, 마지막 줄 [END]."
             )
-            for attempt in range(2):
-                prompt = integration_prompt if attempt == 0 else (integration_prompt + retry_prompt)
-                response = client.chat.completions.create(
-                    model=GROQ_MODEL,
-                    max_tokens=1200,
-                    messages=[{"role": "user", "content": prompt}]
-                )
-                if response.choices:
-                    llm_report = response.choices[0].message.content
-                    validated = _extract_validated_report(llm_report or "")
-                    if validated:
-                        fixed_report = fix_encoding(validated)
-                        print(f"[DEBUG] Received response from Groq, length: {len(llm_report)}")
-                        header = f"[{product_name} 리뷰어-댓글 통합 분석 보고서]\n\n"
-                        return header + fixed_report
-            print("[DEBUG] Integrated analysis output format invalid after retry, using fallback")
-        except Exception as e:
-            print(f"[WARN] Integrated analysis failed: {type(e).__name__}: {e}, using fallback")
-    else:
-        print(f"[WARN] Groq not configured, using fallback analysis")
-    
-    # Fallback: Simple heuristic integration
-    lines = [
-        f"[{product_name} 리뷰어-댓글 통합 분석 보고서]",
-        "",
-        "📋 리뷰어 평가 요약",
-        "-" * 50,
-        transcript_report[:300] + "..." if len(transcript_report) > 300 else transcript_report,
-        "",
-        "📋 사람들의 반응 요약",
-        "-" * 50,
-        comment_sentiment_report[:300] + "..." if len(comment_sentiment_report) > 300 else comment_sentiment_report,
-        "",
-        "📊 통합 평가",
-        "-" * 50,
-        "리뷰어의 의견과 소비자의 의견을 바탕으로 종합 평가를 진행했습니다.",
-        "두 관점의 분석을 통해 제품의 강점과 약점을 명확히 파악할 수 있으며,",
-        "마케팅 및 개선 전략 수립에 참고할 수 있습니다.",
-        "(계산 방식: Groq Llama를 통한 AI 기반 의견 유사도 분석)",
-    ]
-    
-    return "\n".join(lines)
+            prompt = integration_prompt if attempt == 0 else (integration_prompt + retry_prompt)
+            response = client.chat.completions.create(
+                model=GROQ_MODEL,
+                max_tokens=1200,
+                messages=[{"role": "user", "content": prompt}]
+            )
+            if response.choices:
+                llm_report = response.choices[0].message.content
+                validated = _extract_validated_report(llm_report or "")
+                if validated:
+                    fixed_report = fix_encoding(validated)
+                    print(f"[DEBUG] Received response from Groq, length: {len(llm_report)}")
+                    header = f"[{product_name} 리뷰어-댓글 통합 분석 보고서]\n\n"
+                    return header + fixed_report
+            print(
+                f"[WARN] Integrated analysis format invalid at attempt {attempt + 1}/{max_attempts} "
+                "(requested<=1000, validation_max=1500)"
+            )
+        error_msg = "[ERROR] Integrated analysis output format invalid after 3 attempts"
+        print(error_msg)
+        return error_msg
+    except Exception as e:
+        error_msg = f"[ERROR] Integrated analysis failed: {type(e).__name__}: {e}"
+        print(error_msg)
+        return error_msg
 
 
 def generate_and_save_all_reports(video_id: str, product_name: str, force_rewrite: bool = False):

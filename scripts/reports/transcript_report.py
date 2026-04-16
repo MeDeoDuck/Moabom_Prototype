@@ -12,7 +12,7 @@ except ImportError:
     OpenAI = None
 
 
-def _extract_validated_report(llm_text: str, min_chars: int = 180, max_chars: int = 330) -> str:
+def _extract_validated_report(llm_text: str, min_chars: int = 1, max_chars: int = 1500) -> str:
     """Validate [END] marker and body length, then return cleaned body text."""
     if not llm_text:
         return ""
@@ -199,14 +199,17 @@ def build_transcript_report_heuristic(transcript_text: str) -> str:
 
 def build_transcript_report(transcript_text: str) -> str:
     """
-    Build transcript report with Groq Llama first, then fallback to heuristic analysis.
+    Build transcript report with Groq Llama and strict format validation.
+    Retry up to 3 times with explicit output format instructions.
     """
     normalized = re.sub(r"\s+", " ", transcript_text or "").strip()
     if not normalized:
         return "No transcript content available."
 
     if OpenAI is None or not GROQ_API_KEY:
-        return build_transcript_report_heuristic(normalized)
+        error_msg = "[ERROR] Transcript report generation failed: Groq Llama not configured."
+        print(error_msg)
+        return error_msg
 
     try:
         client = OpenAI(
@@ -214,12 +217,14 @@ def build_transcript_report(transcript_text: str) -> str:
             base_url="https://api.groq.com/openai/v1"
         )
         base_prompt = build_transcript_report_prompt(normalized)
-        retry_prompt = (
-            "\n\n이전 응답이 형식 조건을 충족하지 않았습니다. "
-            "반드시 본문 200~300자(허용 180~330자), 마지막 줄 단독 [END]를 지켜 다시 작성하세요."
-        )
+        max_attempts = 3
 
-        for attempt in range(2):
+        for attempt in range(max_attempts):
+            retry_prompt = (
+                "\n\n이전 응답이 형식 조건을 충족하지 않았습니다. "
+                "이번에는 반드시 본문 1000자 이내로 작성하고, "
+                "마지막 줄 단독 [END]를 지켜 다시 작성하세요."
+            )
             prompt = base_prompt if attempt == 0 else (base_prompt + retry_prompt)
             response = client.chat.completions.create(
                 model=GROQ_MODEL,
@@ -233,9 +238,15 @@ def build_transcript_report(transcript_text: str) -> str:
             if validated:
                 fixed_text = fix_encoding(validated)
                 return f"[자막 기반 제품 분석 보고서]\n\n{fixed_text}"
+            print(
+                f"[WARN] Transcript analysis format invalid at attempt {attempt + 1}/{max_attempts} "
+                "(requested<=1000, validation_max=1500)"
+            )
 
-        print("[WARN] Transcript analysis output format invalid after retry, falling back to heuristic")
+        error_msg = "[ERROR] Transcript analysis output format invalid after 3 attempts"
+        print(error_msg)
+        return error_msg
     except Exception as e:
-        print(f"[WARN] Transcript analysis failed: {e}, falling back to heuristic")
-
-    return build_transcript_report_heuristic(normalized)
+        error_msg = f"[ERROR] Transcript analysis failed: {e}"
+        print(error_msg)
+        return error_msg
