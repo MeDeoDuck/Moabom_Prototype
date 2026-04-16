@@ -7,6 +7,50 @@ from psycopg2.extras import RealDictCursor
 from scripts.config import GROQ_API_KEY, GROQ_MODEL, DATABASE_URL
 from scripts.reports.transcript_report import fix_encoding, _extract_validated_report
 
+
+def _compute_weighted_sentiment_metrics(comments):
+    """
+    Weighted aggregation with fallback:
+    - analysis_weight missing/NULL -> 1.0
+    Returns dict while keeping report interface unchanged.
+    """
+    weighted_totals = {"positive": 0.0, "negative": 0.0, "neutral": 0.0}
+    total_weight = 0.0
+    analyzed_count = 0
+    low_conf_weight_count = 0
+
+    for c in comments:
+        label = c.get("sentiment_label")
+        if label not in weighted_totals:
+            continue
+        weight = c.get("analysis_weight")
+        if weight is None:
+            weight = 1.0
+        weight = float(weight)
+        weighted_totals[label] += weight
+        total_weight += weight
+        analyzed_count += 1
+        if weight < 1.0:
+            low_conf_weight_count += 1
+
+    if total_weight <= 0:
+        return {
+            "positive_weighted_ratio": 0.0,
+            "negative_weighted_ratio": 0.0,
+            "neutral_weighted_ratio": 0.0,
+            "total_weight": 0.0,
+            "low_confidence_ratio": 0.0,
+        }
+
+    low_conf_ratio = (low_conf_weight_count / analyzed_count) if analyzed_count > 0 else 0.0
+    return {
+        "positive_weighted_ratio": weighted_totals["positive"] / total_weight,
+        "negative_weighted_ratio": weighted_totals["negative"] / total_weight,
+        "neutral_weighted_ratio": weighted_totals["neutral"] / total_weight,
+        "total_weight": total_weight,
+        "low_confidence_ratio": low_conf_ratio,
+    }
+
 try:
     from openai import OpenAI
 except ImportError:
@@ -25,7 +69,7 @@ def build_comment_sentiment_report(video_id: str, product_name: str = "제품") 
         
         # Fetch comments with cached sentiment data
         cur.execute("""
-            SELECT c.comment_id, c.text_raw, cs.sentiment_label, cs.sentiment_score
+            SELECT c.comment_id, c.text_raw, cs.sentiment_label, cs.sentiment_score, cs.analysis_weight
             FROM comments c
             LEFT JOIN comment_sentiments cs ON c.comment_id = cs.comment_id
             WHERE c.video_id = %s
@@ -39,10 +83,11 @@ def build_comment_sentiment_report(video_id: str, product_name: str = "제품") 
         if not comments:
             return None
         
-        # Count sentiments
+        # Count sentiments (keep existing interface counts)
         positive_count = sum(1 for c in comments if c.get("sentiment_label") == "positive")
         negative_count = sum(1 for c in comments if c.get("sentiment_label") == "negative")
         neutral_count = sum(1 for c in comments if c.get("sentiment_label") == "neutral")
+        weighted_metrics = _compute_weighted_sentiment_metrics(comments)
         
         total = len(comments)
         
@@ -70,6 +115,8 @@ def build_comment_sentiment_report(video_id: str, product_name: str = "제품") 
 부정적: {negative_count}개
 중립적: {neutral_count}개
 총합: {total}개
+가중 비율(확신도 반영): 긍정 {weighted_metrics["positive_weighted_ratio"]:.1%}, 부정 {weighted_metrics["negative_weighted_ratio"]:.1%}, 중립 {weighted_metrics["neutral_weighted_ratio"]:.1%}
+저확신 비율: {weighted_metrics["low_confidence_ratio"]:.1%}
 
 📋 긍정 댓글 (샘플):
 ================

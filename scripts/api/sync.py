@@ -8,6 +8,10 @@ from scripts.database.connection import get_connection
 from scripts.youtube.video_service import fetch_product_videos
 from scripts.youtube.comment_service import fetch_video_comments  # Fallback용 항상 import
 from scripts.config import YOUTUBE_API_KEY, GROQ_API_KEY, DATABASE_URL  # 항상 import
+from scripts.analysis.confidence_weights import (
+    get_analysis_weight,
+    LOW_CONFIDENCE_WARNING_THRESHOLD,
+)
 import uuid
 import random
 import re
@@ -366,6 +370,7 @@ def process_comments_with_agent(video_id, product_name):
     selected_before_budget_count = 0
     selected_after_budget_count = 0
     classified_count = 0
+    low_confidence_analyzed_count = 0
     
     try:
         # Step 1: Collect comments from YouTube
@@ -643,18 +648,23 @@ def process_comments_with_agent(video_id, product_name):
                         sentiment_result = sentiment_analyzer.analyze_single(comment_text)
                         sentiment_map = {"POSITIVE": "positive", "NEUTRAL": "neutral", "NEGATIVE": "negative"}
                         sentiment_label = sentiment_map.get(sentiment_result.overall_sentiment.value, "neutral")
+                        analysis_weight = get_analysis_weight(bool(decision.is_low_confidence))
+                        if decision.is_low_confidence:
+                            low_confidence_analyzed_count += 1
 
                         cur.execute("""
                             INSERT INTO comment_sentiments (
-                                comment_id, sentiment_label, sentiment_score, created_at
-                            ) VALUES (%s, %s, %s, %s)
+                                comment_id, sentiment_label, sentiment_score, analysis_weight, created_at
+                            ) VALUES (%s, %s, %s, %s, %s)
                             ON CONFLICT (comment_id) DO UPDATE SET
                                 sentiment_label = EXCLUDED.sentiment_label,
-                                sentiment_score = EXCLUDED.sentiment_score
+                                sentiment_score = EXCLUDED.sentiment_score,
+                                analysis_weight = EXCLUDED.analysis_weight
                         """, (
                             comment_id,
                             sentiment_label,
                             float(sentiment_result.overall_score),
+                            float(analysis_weight),
                             datetime.now()
                         ))
 
@@ -697,6 +707,13 @@ def process_comments_with_agent(video_id, product_name):
                 "[AGENT] Step 7 result: "
                 f"final_analyzed_count={stats['analyzed']}, final_excluded_count={stats['excluded']}"
             )
+            if stats["analyzed"] > 0:
+                low_conf_ratio = low_confidence_analyzed_count / stats["analyzed"]
+                level = "WARN" if low_conf_ratio > LOW_CONFIDENCE_WARNING_THRESHOLD else "INFO"
+                print(
+                    f"[{level}] Low-confidence analyzed ratio: "
+                    f"{low_confidence_analyzed_count}/{stats['analyzed']} ({low_conf_ratio:.2%})"
+                )
 
         print(
             "[AGENT] FINAL FUNNEL SUMMARY: "
@@ -889,9 +906,9 @@ def register_sync_routes(app):
                             cur = conn.cursor()
                             cur.execute("DELETE FROM comment_sentiments WHERE comment_id = %s", (comment["comment_id"],))
                             cur.execute("""
-                                INSERT INTO comment_sentiments (comment_id, sentiment_label, sentiment_score, created_at)
-                                VALUES (%s, %s, %s, NOW())
-                            """, (comment["comment_id"], sentiment_label, sentiment_score))
+                                INSERT INTO comment_sentiments (comment_id, sentiment_label, sentiment_score, analysis_weight, created_at)
+                                VALUES (%s, %s, %s, %s, NOW())
+                            """, (comment["comment_id"], sentiment_label, sentiment_score, 1.0))
                             conn.commit()
                             cur.close()
                             conn.close()

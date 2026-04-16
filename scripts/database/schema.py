@@ -152,8 +152,22 @@ def init_db():
             comment_id       VARCHAR(255) NOT NULL REFERENCES comments(comment_id) ON DELETE CASCADE,
             sentiment_label  VARCHAR(16) NOT NULL,
             sentiment_score  NUMERIC(4,3),
+            analysis_weight  NUMERIC(4,3) DEFAULT 1.0,
             created_at       TIMESTAMP DEFAULT NOW()
         );
+    """)
+
+    cursor.execute("""
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name='comment_sentiments' AND column_name='analysis_weight'
+            ) THEN
+                ALTER TABLE comment_sentiments
+                ADD COLUMN analysis_weight NUMERIC(4,3) DEFAULT 1.0;
+            END IF;
+        END $$;
     """)
     
     # Migration: Modify comment_sentiments.comment_id to VARCHAR(255)
