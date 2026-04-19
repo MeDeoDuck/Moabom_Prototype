@@ -126,35 +126,47 @@ class SelectionState(TypedDict, total=False):
 
 ### 노드 그래프
 
-```
-START
-  │
-  ▼
-fetch_candidates ──(후보 0개)──▶ END(error)
-  │
-  ▼
-enrich_metadata
-  │
-  ▼
-score_quantitative
-  │
-  ▼
-diversity_filter ──(생존 < k_min)──▶ relax_constraints ──▶ score_quantitative
-  │                                   (조건부 루프, 최대 1회)
-  ▼
-llm_rerank ──(LLM 실패)──▶ finalize_selection (rerank 건너뛰고 점수만 사용)
-  │
-  ▼
-finalize_selection
-  │
-  ▼
-generate_rationale ──(LLM 실패)──▶ END (점수 기반 기본 rationale)
-  │
-  ▼
-END
+아래 다이어그램은 실제 컴파일된 그래프에서 `build_graph().get_graph().draw_mermaid()`로 생성 — 코드 변경 시 재생성만 하면 자동 동기화.
+
+```mermaid
+---
+config:
+  flowchart:
+    curve: linear
+---
+graph TD;
+	__start__([__start__]):::first
+	fetch_candidates(fetch_candidates)
+	enrich_metadata(enrich_metadata)
+	score_quantitative(score_quantitative)
+	diversity_filter(diversity_filter)
+	relax_constraints(relax_constraints)
+	llm_rerank(llm_rerank)
+	finalize_selection(finalize_selection)
+	generate_rationale(generate_rationale)
+	__end__([__end__]):::last
+	__start__ --> fetch_candidates;
+	fetch_candidates -. end .-> __end__;
+	fetch_candidates -. enrich .-> enrich_metadata;
+	enrich_metadata --> score_quantitative;
+	score_quantitative --> diversity_filter;
+	diversity_filter -. relax .-> relax_constraints;
+	diversity_filter -.-> llm_rerank;
+	relax_constraints --> score_quantitative;
+	llm_rerank --> finalize_selection;
+	finalize_selection --> generate_rationale;
+	generate_rationale --> __end__;
+	classDef default fill:#f2f0ff,line-height:1.2
+	classDef first fill-opacity:0
+	classDef last fill:#bfb6fc
 ```
 
-조건부 엣지 2개(다양성 부족 시 완화 루프, LLM 실패 시 우아한 저하). LLM 호출은 **정확히 2회**로 제한 (비용/지연 관리).
+조건부 엣지 요약:
+- `fetch_candidates`: 후보 0건 → 즉시 `__end__` (에러 상태)
+- `diversity_filter`: 생존자 < `k_min` && `relax_attempts < 1` → `relax_constraints` 루프 (최대 1회) → 다시 `score_quantitative`
+- `llm_rerank` / `generate_rationale`: LLM 실패 시 노드 내부에서 graceful degradation (점수만으로 finalize, `selection_reasons` 기반 fallback rationale). 엣지는 항상 다음 노드로.
+
+LLM 호출은 **정확히 2회/run**으로 제한 (비용/지연 관리).
 
 ## Explainable AI — 점수 설계
 

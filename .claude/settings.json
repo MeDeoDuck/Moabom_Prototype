@@ -1,35 +1,5 @@
 {
   "permissions": {
-    "allow": [
-      "Bash(ls -la c:/Moabom_Prototype/.env*)",
-      "Bash(where psql:*)",
-      "Bash(psql --version)",
-      "Bash(docker compose:*)",
-      "Bash(docker exec:*)",
-      "Bash(python -m venv .venv)",
-      "Bash(.venv/Scripts/python.exe -m pip install --upgrade pip)",
-      "Bash(.venv/Scripts/python.exe -m pip install -r requirements.txt)",
-      "Bash(.venv/Scripts/python.exe -m pip install yt-dlp)",
-      "Bash(.venv/Scripts/python.exe -c \"from scripts.database.schema import init_db; init_db\\(\\)\")",
-      "Bash(PYTHONIOENCODING=utf-8 .venv/Scripts/python.exe main_youtube_tech_review.py 8000)",
-      "Bash(curl -s -o /dev/null -w \"HTTP %{http_code}\\\\n\" http://localhost:8000/products)",
-      "Bash(.venv/Scripts/python.exe -m pip install --dry-run -r requirements.txt)",
-      "Bash(ls *.md *.pdf)",
-      "Bash(.venv/Scripts/python.exe main_youtube_tech_review.py 8000)",
-      "Bash(powershell -NoProfile -Command \"Get-Process -Id 16252 | Select-Object Id, ProcessName, Path\")",
-      "Bash(gh --version)",
-      "Bash(winget install:*)",
-      "Bash(python -c ' *)",
-      "Bash(PYTHONIOENCODING=utf-8 python -m pip install --quiet psycopg2-binary jinja2 langgraph langchain-core)",
-      "Bash(PGPASSWORD=postgres psql -h 127.0.0.1 -p 5432 -U postgres -d techdb -c \"SELECT 1\")",
-      "Bash(grep -v '^$')",
-      "Bash(tasklist //FI \"PID eq 22876\")",
-      "Bash(tasklist //FI \"PID eq 17676\")",
-      "Bash(PYTHONIOENCODING=utf-8 python main.py)",
-      "Read(//c/Users/kimyo/AppData/Local/Temp/claude/c--Moabom-Prototype/af6f3d6b-82b7-4278-86b8-61bd208f3800/tasks/**)",
-      "Bash(python -m pip install --quiet -r requirements.txt)",
-      "Bash(python -m pip install -r requirements.txt)",
-      "Bash(python -m pip install --quiet yt-dlp textblob reportlab anthropic markdown youtube-transcript-api)"
-    ]
+    "defaultMode": "bypassPermissions"
   }
 }
