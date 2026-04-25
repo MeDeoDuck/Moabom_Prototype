@@ -1,0 +1,31 @@
+# Web framework
+fastapi==0.104.1
+uvicorn==0.24.0
+starlette==0.27.0
+Jinja2==3.1.2
+python-multipart==0.0.6
+
+# Database
+psycopg2-binary==2.9.9
+
+# LLM & LangChain
+groq==0.37.1
+langchain==1.2.15
+langchain-core==1.2.31
+langchain-groq==1.1.2
+
+# YouTube API
+google-api-python-client==2.193.0
+google-auth==2.49.1
+google-auth-httplib2==0.3.1
+youtube-transcript-api==1.2.4
+yt-dlp==2026.3.17
+
+# HTTP
+requests==2.33.0
+httpx==0.25.2
+
+# Utils
+python-dotenv==1.0.0
+pydantic==2.12.5
+emoji==2.15.0
