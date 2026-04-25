@@ -1,61 +1,248 @@
-
 <!DOCTYPE html>
-<html>
+<html lang="ko">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tech Products</title>
+    <title>모아봄 — 유튜브 테크 리뷰 종합 분석</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
-        body { font-family: Arial, sans-serif; margin: 20px; }
-        .container { max-width: 900px; margin: 0 auto; }
-        h1 { color: #333; }
-        .form-group { margin-bottom: 15px; }
-        label { display: block; margin-bottom: 5px; font-weight: bold; }
-        input, select { padding: 8px; width: 200px; }
-        button { padding: 10px 20px; background: #007bff; color: white; border: none; cursor: pointer; border-radius: 4px; }
-        button:hover { background: #0056b3; }
-        .product-list { margin-top: 30px; }
-        .product-item { padding: 12px; border: 1px solid #ddd; margin-bottom: 10px; border-radius: 4px; }
-        .product-item a { color: #007bff; text-decoration: none; }
-        .product-item a:hover { text-decoration: underline; }
+        :root {
+            --bg: #f7f5fb;
+            --surface: #ffffff;
+            --border: #e7e2f3;
+            --text: #1f1c2e;
+            --muted: #6b6880;
+            --primary: #6f42c1;
+            --primary-strong: #5a32a3;
+            --primary-soft: #efe9fb;
+            --accent: #f06292;
+            --shadow: 0 4px 16px rgba(111, 66, 193, 0.08);
+            --shadow-strong: 0 10px 32px rgba(111, 66, 193, 0.18);
+        }
+
+        * { box-sizing: border-box; }
+        html, body { margin: 0; padding: 0; }
+        body {
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.55;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .page { max-width: 1080px; margin: 0 auto; padding: 32px 24px 80px; }
+
+        /* ── Top bar ────────────────────────────────────── */
+        .topbar { display: flex; align-items: center; gap: 10px; margin-bottom: 32px; }
+        .logo {
+            width: 36px; height: 36px; border-radius: 10px;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%);
+            color: white; display: grid; place-items: center;
+            font-weight: 800; font-size: 18px;
+            box-shadow: var(--shadow);
+        }
+        .brand { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; }
+        .brand .sub { font-weight: 500; color: var(--muted); margin-left: 6px; font-size: 14px; }
+
+        /* ── Hero ───────────────────────────────────────── */
+        .hero {
+            background: linear-gradient(140deg, #ffffff 0%, #f3edff 60%, #fde8ef 100%);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 44px 40px;
+            box-shadow: var(--shadow);
+            position: relative;
+            overflow: hidden;
+        }
+        .hero::after {
+            content: ""; position: absolute; right: -60px; top: -60px;
+            width: 220px; height: 220px; border-radius: 50%;
+            background: radial-gradient(circle at center, rgba(240, 98, 146, 0.18), transparent 70%);
+        }
+        .hero h1 {
+            font-size: 34px; font-weight: 800; margin: 0 0 12px;
+            letter-spacing: -0.02em; line-height: 1.2;
+        }
+        .hero h1 em {
+            font-style: normal;
+            background: linear-gradient(135deg, var(--primary), var(--accent));
+            -webkit-background-clip: text; background-clip: text; color: transparent;
+        }
+        .hero p.lead { font-size: 16px; color: var(--muted); margin: 0 0 24px; max-width: 640px; }
+
+        .pillars { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 8px; }
+        .pillar {
+            background: rgba(255, 255, 255, 0.65);
+            backdrop-filter: blur(6px);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 16px 18px;
+        }
+        .pillar .icon { font-size: 20px; margin-bottom: 6px; }
+        .pillar .t { font-weight: 700; font-size: 14px; margin-bottom: 4px; }
+        .pillar .d { font-size: 13px; color: var(--muted); line-height: 1.5; }
+
+        /* ── Section card ──────────────────────────────── */
+        .section { margin-top: 32px; }
+        .section h2 { font-size: 20px; font-weight: 700; margin: 0 0 14px; letter-spacing: -0.01em; }
+        .section h2 .count { color: var(--muted); font-weight: 500; margin-left: 6px; font-size: 16px; }
+
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: var(--shadow);
+        }
+
+        /* ── Form ──────────────────────────────────────── */
+        .form-row { display: flex; gap: 12px; align-items: stretch; flex-wrap: wrap; }
+        .form-row label.field { flex: 1; min-width: 240px; }
+        .form-row .field-label { display: block; font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 6px; }
+        .form-row input[type="text"] {
+            width: 100%; height: 48px; padding: 0 16px;
+            border: 1px solid var(--border); border-radius: 12px;
+            font-size: 15px; font-family: inherit; color: var(--text);
+            background: #fafafd; transition: border-color 0.15s, background 0.15s;
+        }
+        .form-row input[type="text"]:focus {
+            outline: none; border-color: var(--primary); background: #fff;
+            box-shadow: 0 0 0 3px var(--primary-soft);
+        }
+        .btn-primary {
+            height: 48px; padding: 0 24px;
+            background: linear-gradient(135deg, var(--primary), var(--primary-strong));
+            color: white; border: none; border-radius: 12px;
+            font-size: 15px; font-weight: 600; font-family: inherit;
+            cursor: pointer; transition: transform 0.1s, box-shadow 0.15s;
+            box-shadow: var(--shadow);
+        }
+        .btn-primary:hover { transform: translateY(-1px); box-shadow: var(--shadow-strong); }
+        .btn-primary:active { transform: translateY(0); }
+        .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; transform: none; box-shadow: none; }
+        .form-hint { font-size: 13px; color: var(--muted); margin-top: 12px; }
+
+        /* ── Product grid ──────────────────────────────── */
+        .product-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
+        .product-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 18px 20px;
+            text-decoration: none; color: inherit;
+            display: block;
+            transition: border-color 0.15s, transform 0.1s, box-shadow 0.15s;
+        }
+        .product-card:hover {
+            border-color: var(--primary);
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-strong);
+        }
+        .product-card .name {
+            font-size: 16px; font-weight: 700; color: var(--text);
+            margin-bottom: 6px;
+            display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+            overflow: hidden; text-overflow: ellipsis;
+        }
+        .product-card .arrow { font-size: 14px; color: var(--primary); font-weight: 600; }
+
+        .empty {
+            background: var(--surface); border: 1px dashed var(--border);
+            border-radius: 14px; padding: 32px; text-align: center; color: var(--muted);
+        }
+
+        /* ── Responsive ────────────────────────────────── */
+        @media (max-width: 720px) {
+            .page { padding: 20px 16px 60px; }
+            .hero { padding: 32px 24px; border-radius: 16px; }
+            .hero h1 { font-size: 26px; }
+            .pillars { grid-template-columns: 1fr; }
+            .form-row { flex-direction: column; }
+            .btn-primary { width: 100%; }
+        }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>📱 Tech Products Dashboard</h1>
-        
-        <div>
-            <h2>Add New Product</h2>
-            <form id="productForm">
-                <div class="form-group">
-                    <label for="name">Product Name *</label>
-                    <input type="text" id="name" name="name" required>
-                </div>
-                <button type="submit">Create Product</button>
-            </form>
+    <div class="page">
+        <!-- Top bar -->
+        <div class="topbar">
+            <div class="logo">M</div>
+            <div class="brand">모아봄<span class="sub">Moabom</span></div>
         </div>
 
-        <div class="product-list">
-            <h2>Products ({{ products|length }})</h2>
-            {% if products %}
-                {% for product in products %}
-                    <div class="product-item">
-                        <strong><a href="/products/{{ product.product_id }}">{{ product.name }}</a></strong>
+        <!-- Hero -->
+        <section class="hero">
+            <h1>유튜브 테크 리뷰를 <em>한 번에 모아봄</em></h1>
+            <p class="lead">
+                다수의 리뷰 영상 자막과 댓글을 자동 수집·분석하고, 리뷰어 성향(엄격/관대)까지 보정한
+                <strong>제품 단위 종합 보고서</strong>를 제공합니다. 특정 채널·리뷰어 편향에 휘둘리지 않는 객관적 구매 판단을 도와드려요.
+            </p>
+            <div class="pillars">
+                <div class="pillar">
+                    <div class="icon">🎯</div>
+                    <div class="t">자율 영상 선정</div>
+                    <div class="d">LangChain Agent 가 후보 풀에서 다양성·관련도를 균형 있게 선정</div>
+                </div>
+                <div class="pillar">
+                    <div class="icon">⚖️</div>
+                    <div class="t">편향 보정 분석</div>
+                    <div class="d">리뷰어 평가 성향을 측정하고 보정해 균형 잡힌 종합 평가 산출</div>
+                </div>
+                <div class="pillar">
+                    <div class="icon">📑</div>
+                    <div class="t">3종 종합 보고서</div>
+                    <div class="d">자막 기반 인사이트 · 댓글 감성 반응 · 통합 분석을 한 페이지에서</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Add product -->
+        <section class="section">
+            <h2>제품 추가</h2>
+            <div class="card">
+                <form id="productForm" autocomplete="off">
+                    <div class="form-row">
+                        <label class="field" for="name">
+                            <span class="field-label">분석할 제품명</span>
+                            <input type="text" id="name" name="name" placeholder="예: 갤럭시 S25, 아이폰 17, 에어팟 4" required>
+                        </label>
+                        <button type="submit" class="btn-primary">분석 시작 →</button>
                     </div>
-                {% endfor %}
+                    <p class="form-hint">제품을 등록하면 다음 화면에서 AI 가 분석할 영상을 자동 선정합니다.</p>
+                </form>
+            </div>
+        </section>
+
+        <!-- Product list -->
+        <section class="section">
+            <h2>등록된 제품 <span class="count">{{ products|length }}</span></h2>
+            {% if products %}
+                <div class="product-grid">
+                    {% for product in products %}
+                        <a class="product-card" href="/products/{{ product.product_id }}">
+                            <div class="name">{{ product.name }}</div>
+                            <div class="arrow">분석 보러가기 →</div>
+                        </a>
+                    {% endfor %}
+                </div>
             {% else %}
-                <p>No products yet. Create one above!</p>
+                <div class="empty">아직 등록된 제품이 없습니다. 위에서 첫 제품을 추가해보세요.</div>
             {% endif %}
-        </div>
+        </section>
     </div>
 
     <script>
         document.getElementById('productForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             const submitBtn = e.target.querySelector('button[type="submit"]');
+            const original = submitBtn.textContent;
             submitBtn.disabled = true;
+            submitBtn.textContent = '생성 중...';
 
-            const data = { name: document.getElementById('name').value };
+            const data = { name: document.getElementById('name').value.trim() };
+            if (!data.name) { submitBtn.disabled = false; submitBtn.textContent = original; return; }
 
             try {
                 const response = await fetch('/products', {
@@ -63,17 +250,16 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(data),
                 });
-
                 if (!response.ok) {
-                    alert('Error creating product');
-                    submitBtn.disabled = false;
+                    alert('제품 생성 중 오류가 발생했습니다.');
+                    submitBtn.disabled = false; submitBtn.textContent = original;
                     return;
                 }
                 const product = await response.json();
                 window.location.href = '/products/' + product.product_id;
             } catch (error) {
                 alert('Error: ' + error);
-                submitBtn.disabled = false;
+                submitBtn.disabled = false; submitBtn.textContent = original;
             }
         });
     </script>
