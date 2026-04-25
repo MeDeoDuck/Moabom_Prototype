@@ -23,9 +23,12 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: youtube-analysis-app
+    env_file:
+      - .env
     environment:
+      # .env 의 DATABASE_URL 을 컨테이너 내부 네트워크용으로 덮어씀
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/techdb
-      YOUTUBE_API_KEY: ${YOUTUBE_API_KEY}
+      PORT: 8000
     ports:
       - "8000:8000"
     depends_on:
