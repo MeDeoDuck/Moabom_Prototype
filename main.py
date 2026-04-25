@@ -27,6 +27,7 @@ from scripts.database.schema import init_db
 from scripts.api.products import register_product_routes
 from scripts.api.videos import register_video_routes
 from scripts.api.sync import register_sync_routes
+from video_selection_agent.api.routes import register_selection_routes
 
 
 # ============================================================================
@@ -69,6 +70,7 @@ print("[STARTUP] Registering API routes...")
 register_product_routes(app)
 register_video_routes(app)
 register_sync_routes(app)
+register_selection_routes(app)
 print("[STARTUP] All routes registered")
 
 

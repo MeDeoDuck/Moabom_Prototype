@@ -14,6 +14,9 @@
         .sync-btn { padding: 12px 24px; background: #28a745; color: white; border: none; cursor: pointer; border-radius: 4px; font-size: 16px; }
         .sync-btn:hover { background: #218838; }
         .sync-btn:disabled { background: #ccc; cursor: not-allowed; }
+        .select-btn { padding: 12px 24px; background: #6f42c1; color: white; border: none; cursor: pointer; border-radius: 4px; font-size: 16px; }
+        .select-btn:hover { background: #5a32a3; }
+        .select-btn:disabled { background: #ccc; cursor: not-allowed; }
         .videos-section { margin-top: 30px; }
         table { width: 100%; border-collapse: collapse; margin-top: 15px; }
         th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
@@ -24,11 +27,69 @@
         .video-thumb { width: 80px; height: 45px; object-fit: cover; border-radius: 3px; }
         .back-link { margin-bottom: 20px; }
         .back-link a { color: #007bff; }
-        .sync-row { display: flex; align-items: center; gap: 12px; }
+        .actions-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
         .sync-progress { width: 280px; height: 8px; background: #e9ecef; border-radius: 999px; overflow: hidden; display: none; }
         .sync-progress.show { display: block; }
         .sync-progress-fill { width: 0%; height: 100%; background: linear-gradient(90deg, #17a2b8, #28a745); transition: width 0.2s ease; }
         .sync-status { font-size: 0.95em; color: #444; min-height: 20px; }
+
+        /* Selection config panel */
+        .select-config { background: #faf7ff; border: 1px solid #e0d4f5; padding: 14px 18px; border-radius: 6px; margin-top: 14px; display: none; }
+        .select-config.show { display: block; }
+        .select-config label { margin-right: 18px; font-size: 0.95em; }
+        .select-config .slider-row { margin-top: 10px; display: flex; align-items: center; gap: 10px; }
+        .select-config input[type="range"] { flex: 1; max-width: 260px; }
+
+        /* Modal */
+        .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: none; z-index: 1000; align-items: flex-start; justify-content: center; overflow-y: auto; padding: 30px 15px; }
+        .modal-backdrop.show { display: flex; }
+        .modal { background: white; border-radius: 8px; max-width: 900px; width: 100%; padding: 22px; box-shadow: 0 12px 32px rgba(0,0,0,0.2); }
+        .modal h2 { margin-top: 0; }
+        .modal-close { float: right; background: none; border: none; font-size: 22px; cursor: pointer; color: #888; }
+        .modal-close:hover { color: #333; }
+        .modal-actions { margin-top: 18px; text-align: right; }
+        .modal-actions button { padding: 9px 18px; border-radius: 4px; border: none; cursor: pointer; font-size: 14px; margin-left: 8px; }
+        .btn-primary { background: #28a745; color: white; }
+        .btn-primary:hover { background: #218838; }
+        .btn-secondary { background: #e9ecef; color: #333; }
+        .btn-secondary:hover { background: #dee2e6; }
+
+        /* Selection result cards */
+        .result-card { border: 1px solid #ddd; border-radius: 6px; padding: 12px 14px; margin-bottom: 10px; display: flex; gap: 12px; }
+        .result-card .rank { font-size: 22px; font-weight: bold; color: #6f42c1; min-width: 32px; text-align: center; }
+        .result-card .body { flex: 1; }
+        .result-card .title { font-weight: bold; margin-bottom: 4px; }
+        .result-card .meta { font-size: 0.85em; color: #666; margin-bottom: 6px; }
+        .result-card .tier-badge { display: inline-block; padding: 1px 7px; border-radius: 3px; font-size: 0.78em; color: white; margin-left: 4px; }
+        .tier-mega { background: #dc3545; }
+        .tier-large { background: #fd7e14; }
+        .tier-mid { background: #ffc107; color: #333; }
+        .tier-small { background: #20c997; }
+        .tier-micro { background: #0dcaf0; color: #333; }
+        .result-card .reasons { margin: 6px 0; }
+        .reason-chip { display: inline-block; background: #f0e7ff; color: #5a32a3; font-size: 0.78em; padding: 2px 8px; border-radius: 10px; margin-right: 4px; }
+        .result-card .rationale-short { font-size: 0.9em; color: #444; font-style: italic; }
+        .why-btn { font-size: 0.8em; padding: 3px 9px; background: none; border: 1px solid #6f42c1; color: #6f42c1; border-radius: 3px; cursor: pointer; margin-left: 6px; }
+        .why-btn:hover { background: #6f42c1; color: white; }
+
+        /* Candidate list for custom mode */
+        .candidate-list { max-height: 420px; overflow-y: auto; border: 1px solid #eee; border-radius: 4px; padding: 8px; margin-top: 10px; }
+        .candidate-item { display: flex; gap: 10px; padding: 8px; border-bottom: 1px solid #f0f0f0; align-items: center; }
+        .candidate-item:last-child { border-bottom: none; }
+        .candidate-item img { width: 90px; height: 50px; object-fit: cover; border-radius: 3px; }
+        .candidate-item .info { flex: 1; font-size: 0.9em; }
+        .candidate-item .info .t { font-weight: bold; }
+        .candidate-item .info .c { color: #666; font-size: 0.85em; }
+        .candidate-count { font-size: 0.9em; color: #6f42c1; margin: 6px 0; }
+
+        /* Score bars (Why modal) */
+        .score-bar-row { display: flex; align-items: center; margin: 4px 0; font-size: 0.9em; }
+        .score-bar-label { width: 140px; }
+        .score-bar-track { flex: 1; height: 14px; background: #f0f0f0; border-radius: 7px; overflow: hidden; }
+        .score-bar-fill { height: 100%; background: linear-gradient(90deg, #6f42c1, #a06fd5); }
+        .score-bar-value { width: 50px; text-align: right; font-family: monospace; color: #555; }
+        .rationale-full-box { background: #faf7ff; border-left: 3px solid #6f42c1; padding: 10px 14px; margin: 12px 0; line-height: 1.5; }
+        .diversity-line { background: #eefaf3; border-left: 3px solid #28a745; padding: 8px 12px; font-size: 0.9em; margin: 10px 0; }
     </style>
 </head>
 <body>
@@ -36,23 +97,43 @@
         <div class="back-link">
             <a href="/products">← Back to Products</a>
         </div>
-        
+
         <h1>{{ product.name }}</h1>
-        
+
         <div class="product-info">
             <p><strong>Brand:</strong> {{ product.brand or 'N/A' }}</p>
             <p><strong>Category:</strong> {{ product.category or 'N/A' }}</p>
             <p><strong>Created:</strong> {{ product.created_at }}</p>
         </div>
-        
-        <div class="sync-row">
+
+        <div class="actions-row">
+            <button class="select-btn" onclick="toggleSelectConfig()" id="selectToggleBtn">🎯 AI 영상 선택 (FR-005)</button>
             <button class="sync-btn" onclick="syncVideos()" id="syncBtn">🔄 Sync Videos from YouTube</button>
             <div id="syncProgress" class="sync-progress" aria-hidden="true">
                 <div id="syncProgressFill" class="sync-progress-fill"></div>
             </div>
             <span id="syncStatus" class="sync-status"></span>
         </div>
-        
+
+        <div id="selectConfig" class="select-config">
+            <div>
+                <label><input type="radio" name="selMode" value="auto" checked> Auto (AI 자동 선택)</label>
+                <label><input type="radio" name="selMode" value="custom"> Custom (직접 선택)</label>
+            </div>
+            <div class="slider-row">
+                <label for="kSlider">선택할 영상 수: <strong id="kValue">5</strong></label>
+                <input type="range" id="kSlider" min="3" max="10" value="5" oninput="document.getElementById('kValue').textContent=this.value">
+            </div>
+            <div class="slider-row">
+                <label for="poolSlider">후보 풀 크기: <strong id="poolValue">30</strong></label>
+                <input type="range" id="poolSlider" min="25" max="50" value="30" oninput="document.getElementById('poolValue').textContent=this.value">
+            </div>
+            <div style="margin-top: 12px;">
+                <button class="btn-primary" onclick="runSelection()" id="runSelBtn">AI 선택 시작</button>
+                <span id="selStatus" style="margin-left: 10px; color: #555;"></span>
+            </div>
+        </div>
+
         <div class="videos-section">
             <h2>Videos ({{ videos|length }})</h2>
             {% if videos %}
@@ -92,7 +173,41 @@
         </div>
     </div>
 
+    <!-- Selection result modal -->
+    <div id="selectModal" class="modal-backdrop" onclick="if(event.target===this) closeSelectModal()">
+        <div class="modal">
+            <button class="modal-close" onclick="closeSelectModal()">×</button>
+            <h2 id="selModalTitle">AI 영상 선택 결과</h2>
+            <div id="selDiversity" class="diversity-line"></div>
+            <div id="selBody"></div>
+            <div id="selCandidates" style="display:none;"></div>
+            <div class="modal-actions">
+                <button class="btn-secondary" onclick="closeSelectModal()">닫기</button>
+                <button class="btn-primary" id="confirmSelBtn" onclick="confirmSelection()" style="display:none;">이 선택으로 확정</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Why selected modal -->
+    <div id="whyModal" class="modal-backdrop" onclick="if(event.target===this) closeWhyModal()">
+        <div class="modal">
+            <button class="modal-close" onclick="closeWhyModal()">×</button>
+            <h2 id="whyModalTitle">왜 선택되었나요?</h2>
+            <div id="whyBody"></div>
+            <div class="modal-actions">
+                <button class="btn-secondary" onclick="closeWhyModal()">닫기</button>
+            </div>
+        </div>
+    </div>
+
     <script>
+        const PRODUCT_ID = {{ product.product_id }};
+        let lastSelection = null;
+
+        function toggleSelectConfig() {
+            document.getElementById('selectConfig').classList.toggle('show');
+        }
+
         async function syncVideos() {
             const btn = document.getElementById('syncBtn');
             const status = document.getElementById('syncStatus');
@@ -100,26 +215,24 @@
             const progressFill = document.getElementById('syncProgressFill');
             let progressValue = 8;
             let timer = null;
-            
+
             btn.disabled = true;
             progress.classList.add('show');
             progressFill.style.width = progressValue + '%';
             status.textContent = 'Syncing...';
 
-            // Simulated progress while waiting for server response.
             timer = setInterval(() => {
                 if (progressValue < 90) {
                     progressValue += 4;
                     progressFill.style.width = progressValue + '%';
                 }
             }, 400);
-            
+
             try {
-                const response = await fetch('/products/{{ product.product_id }}/sync', {
+                const response = await fetch('/products/' + PRODUCT_ID + '/sync', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                 });
-                
                 if (response.ok) {
                     const result = await response.json();
                     progressFill.style.width = '100%';
@@ -131,15 +244,224 @@
             } catch (error) {
                 status.textContent = 'Error: ' + error;
             } finally {
-                if (timer) {
-                    clearInterval(timer);
-                }
+                if (timer) clearInterval(timer);
                 if (!status.textContent.startsWith('✓')) {
                     progress.classList.remove('show');
                     progressFill.style.width = '0%';
                 }
                 btn.disabled = false;
             }
+        }
+
+        async function runSelection() {
+            const mode = document.querySelector('input[name="selMode"]:checked').value;
+            const k = parseInt(document.getElementById('kSlider').value, 10);
+            const pool = parseInt(document.getElementById('poolSlider').value, 10);
+            const btn = document.getElementById('runSelBtn');
+            const status = document.getElementById('selStatus');
+
+            btn.disabled = true;
+            status.textContent = 'YouTube 후보 수집 + 스코어링 + LLM 평가 중... (최대 60초)';
+
+            try {
+                // Custom mode: first call with mode=auto (to fetch + score + get candidates), then show preview for selection.
+                // Auto mode: call once with mode=auto.
+                const firstMode = mode === 'custom' ? 'auto' : 'auto';
+                const response = await fetch('/products/' + PRODUCT_ID + '/select-videos', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mode: firstMode, k: k, candidate_pool_size: pool }),
+                });
+                if (!response.ok) {
+                    const err = await response.text();
+                    status.textContent = '에러: ' + err;
+                    return;
+                }
+                const result = await response.json();
+                lastSelection = result;
+                status.textContent = '✓ 완료 (' + result.candidate_count + '개 후보 → ' + result.selected.length + '개 선정)';
+                openSelectModal(result, mode);
+            } catch (error) {
+                status.textContent = '에러: ' + error;
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        function tierLabel(tier) {
+            const m = { mega: '메가', large: '대형', mid: '중형', small: '소형', micro: '마이크로' };
+            return m[tier] || tier;
+        }
+
+        function renderResultCard(v) {
+            const reasons = (v.selection_reasons || []).map(r => '<span class="reason-chip">' + r + '</span>').join('');
+            return `
+                <div class="result-card">
+                    <div class="rank">#${v.rank}</div>
+                    <div class="body">
+                        <div class="title">${escapeHtml(v.title)}
+                            <button class="why-btn" onclick='showWhy(${JSON.stringify(v.video_id)})'>왜 선택됨?</button>
+                        </div>
+                        <div class="meta">
+                            ${escapeHtml(v.channel_name)}
+                            <span class="tier-badge tier-${v.tier}">${tierLabel(v.tier)}</span>
+                            · score ${v.final_score.toFixed(3)}
+                        </div>
+                        <div class="reasons">${reasons}</div>
+                        <div class="rationale-short">${escapeHtml(v.rationale_short || '')}</div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderDiversity(result) {
+            const d = result.diversity_report || {};
+            const tiers = d.tier_distribution || {};
+            const tierStr = Object.entries(tiers).map(([k, v]) => tierLabel(k) + ':' + v).join(', ');
+            return `고유 채널 ${d.channels_unique || 0}개, 티어 분포 [${tierStr}], 모델 ${result.model_used}, 정책 ${result.policy_version}`;
+        }
+
+        function renderCandidateCheckboxes(result, k) {
+            const items = result.candidates_preview || [];
+            const selectedSet = new Set((result.selected || []).map(v => v.video_id));
+            const listHtml = items.map(c => {
+                const checked = selectedSet.has(c.video_id) ? 'checked' : '';
+                return `
+                    <label class="candidate-item">
+                        <input type="checkbox" class="cand-chk" value="${c.video_id}" ${checked}>
+                        <div class="info">
+                            <div class="t">${escapeHtml(c.title)}</div>
+                            <div class="c">${escapeHtml(c.channel_name)}</div>
+                        </div>
+                    </label>
+                `;
+            }).join('');
+            return `
+                <h3 style="margin-top:20px;">후보 30개 (Auto 선택된 ${k}개는 미리 체크됨)</h3>
+                <div class="candidate-count">3~10개 선택 후 하단 "이 선택으로 확정" 클릭</div>
+                <div class="candidate-list">${listHtml}</div>
+            `;
+        }
+
+        function openSelectModal(result, uiMode) {
+            document.getElementById('selModalTitle').textContent =
+                uiMode === 'custom' ? 'Custom 모드: 후보에서 직접 선택' : 'Auto 모드: AI 자동 선택 결과';
+            document.getElementById('selDiversity').textContent = renderDiversity(result);
+            document.getElementById('selBody').innerHTML = result.selected.map(renderResultCard).join('');
+
+            const candDiv = document.getElementById('selCandidates');
+            const confirmBtn = document.getElementById('confirmSelBtn');
+            if (uiMode === 'custom') {
+                candDiv.style.display = 'block';
+                candDiv.innerHTML = renderCandidateCheckboxes(result, result.selected.length);
+                confirmBtn.style.display = 'inline-block';
+                confirmBtn.textContent = 'Custom 선택으로 확정';
+            } else {
+                candDiv.style.display = 'none';
+                candDiv.innerHTML = '';
+                confirmBtn.style.display = 'none';
+            }
+            document.getElementById('selectModal').classList.add('show');
+        }
+
+        function closeSelectModal() {
+            document.getElementById('selectModal').classList.remove('show');
+        }
+
+        async function confirmSelection() {
+            const boxes = document.querySelectorAll('.cand-chk:checked');
+            const ids = Array.from(boxes).map(b => b.value);
+            if (ids.length < 3 || ids.length > 10) {
+                alert('3~10개 사이로 선택해주세요. 현재 ' + ids.length + '개');
+                return;
+            }
+            const k = ids.length;
+            const pool = parseInt(document.getElementById('poolSlider').value, 10);
+            const btn = document.getElementById('confirmSelBtn');
+            btn.disabled = true;
+            btn.textContent = '확정 중...';
+            try {
+                const response = await fetch('/products/' + PRODUCT_ID + '/select-videos', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        mode: 'custom',
+                        k: k,
+                        candidate_pool_size: pool,
+                        selected_video_ids: ids,
+                    }),
+                });
+                if (!response.ok) {
+                    alert('에러: ' + (await response.text()));
+                    return;
+                }
+                const result = await response.json();
+                lastSelection = result;
+                alert('Custom ' + result.selected.length + '개 확정 완료. 페이지를 새로고침합니다.');
+                location.reload();
+            } catch (e) {
+                alert('에러: ' + e);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Custom 선택으로 확정';
+            }
+        }
+
+        function showWhy(videoId) {
+            if (!lastSelection) return;
+            const v = lastSelection.selected.find(x => x.video_id === videoId);
+            if (!v) return;
+
+            document.getElementById('whyModalTitle').textContent = '왜 선택됨? — ' + v.title;
+
+            const dims = v.dimensions || {};
+            const contribs = v.weighted_contributions || {};
+            const labels = {
+                relevance: '제품 관련도',
+                engagement: '시청자 참여도',
+                recency: '최신성',
+                channel_anti_bias: '중소 채널 가점',
+                duration_fit: '영상 길이 적합',
+                llm_topical_fit: 'LLM 주제 적합성',
+            };
+            let barsHtml = '';
+            for (const [key, label] of Object.entries(labels)) {
+                const raw = dims[key] || 0;
+                const contrib = contribs[key] || 0;
+                barsHtml += `
+                    <div class="score-bar-row">
+                        <div class="score-bar-label">${label}</div>
+                        <div class="score-bar-track"><div class="score-bar-fill" style="width:${(raw*100).toFixed(1)}%"></div></div>
+                        <div class="score-bar-value">${raw.toFixed(2)} (×w=${contrib.toFixed(3)})</div>
+                    </div>
+                `;
+            }
+
+            document.getElementById('whyBody').innerHTML = `
+                <p><strong>채널:</strong> ${escapeHtml(v.channel_name)}
+                   <span class="tier-badge tier-${v.tier}">${tierLabel(v.tier)}</span>
+                   · <strong>최종 점수:</strong> ${v.final_score.toFixed(3)}
+                </p>
+                <h3 style="margin-top:16px;">점수 차원 (0~1)</h3>
+                ${barsHtml}
+                <h3 style="margin-top:16px;">선정 이유</h3>
+                <div>${(v.selection_reasons || []).map(r => '<span class="reason-chip">' + r + '</span>').join('')}</div>
+                <h3 style="margin-top:16px;">AI 평가</h3>
+                <div class="rationale-full-box"><strong>요약:</strong> ${escapeHtml(v.rationale_short || '(없음)')}</div>
+                <div class="rationale-full-box">${escapeHtml(v.rationale_full || '(없음)')}</div>
+            `;
+            document.getElementById('whyModal').classList.add('show');
+        }
+
+        function closeWhyModal() {
+            document.getElementById('whyModal').classList.remove('show');
+        }
+
+        function escapeHtml(s) {
+            if (s === null || s === undefined) return '';
+            return String(s).replace(/[&<>"']/g, c => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+            })[c]);
         }
     </script>
 </body>

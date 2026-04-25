@@ -437,21 +437,86 @@ def init_db():
             updated_at          TIMESTAMP DEFAULT NOW()
         );
     """)
-    
+
     # Migration: Add integrated_report column if it doesn't exist
     cursor.execute("""
         SELECT EXISTS (
-            SELECT 1 FROM information_schema.columns 
+            SELECT 1 FROM information_schema.columns
             WHERE table_name = 'video_reports' AND column_name = 'integrated_report'
         )
     """)
     if not cursor.fetchone()[0]:
         cursor.execute("""
-            ALTER TABLE video_reports 
+            ALTER TABLE video_reports
             ADD COLUMN integrated_report TEXT
         """)
         print("✓ Added integrated_report column")
-    
+
+    # ========================================
+    # FR-005: Video Selection Agent 테이블
+    # ========================================
+
+    # videos 테이블 확장 (채널 메타, duration, selection_mode)
+    cursor.execute("""
+        ALTER TABLE videos ADD COLUMN IF NOT EXISTS channel_id VARCHAR(64);
+    """)
+    cursor.execute("""
+        ALTER TABLE videos ADD COLUMN IF NOT EXISTS channel_name VARCHAR(255);
+    """)
+    cursor.execute("""
+        ALTER TABLE videos ADD COLUMN IF NOT EXISTS channel_subscriber_count BIGINT;
+    """)
+    cursor.execute("""
+        ALTER TABLE videos ADD COLUMN IF NOT EXISTS duration_seconds INTEGER;
+    """)
+    cursor.execute("""
+        ALTER TABLE videos ADD COLUMN IF NOT EXISTS selection_mode VARCHAR(16);
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_videos_channel ON videos(channel_id);
+    """)
+
+    # video_selection_runs: 실행 1회 = 1row (audit trail)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS video_selection_runs (
+            run_id          UUID PRIMARY KEY,
+            product_id      INT NOT NULL REFERENCES tech_products(product_id) ON DELETE CASCADE,
+            mode            VARCHAR(16) NOT NULL,
+            model_used      VARCHAR(64),
+            policy_version  VARCHAR(32),
+            k_selected      INTEGER NOT NULL,
+            candidate_count INTEGER NOT NULL,
+            trace_json      JSONB,
+            created_at      TIMESTAMPTZ DEFAULT NOW()
+        );
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_selection_runs_product ON video_selection_runs(product_id);
+    """)
+
+    # video_selection_scores: 후보 × run (선정/미선정 + 점수 + rationale)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS video_selection_scores (
+            id               BIGSERIAL PRIMARY KEY,
+            run_id           UUID NOT NULL REFERENCES video_selection_runs(run_id) ON DELETE CASCADE,
+            video_id         VARCHAR(64) NOT NULL,
+            selected         BOOLEAN NOT NULL,
+            rank             INTEGER,
+            final_score      NUMERIC(6,4),
+            dimensions_json  JSONB NOT NULL,
+            tier             VARCHAR(16),
+            rationale_short  TEXT,
+            rationale_full   TEXT,
+            created_at       TIMESTAMPTZ DEFAULT NOW()
+        );
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_selection_scores_run ON video_selection_scores(run_id);
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_selection_scores_video ON video_selection_scores(video_id);
+    """)
+
     conn.commit()
     cursor.close()
     conn.close()
