@@ -4,7 +4,7 @@ Product-related API routes
 from fastapi import HTTPException, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
-from scripts.database.queries import query_one, query_all, execute_insert
+from scripts.database.queries import query_one, query_all, execute_insert, execute_update
 
 templates = Jinja2Templates(directory="templates")
 
@@ -62,3 +62,14 @@ def register_product_routes(app):
             "product": product,
             "videos": videos,
         })
+
+    @app.delete("/products/{product_id}")
+    async def delete_product(product_id: int):
+        """Delete a product. CASCADE removes related videos, comments, transcripts, reports."""
+        affected = execute_update(
+            "DELETE FROM tech_products WHERE product_id = %s",
+            (product_id,)
+        )
+        if affected == 0:
+            raise HTTPException(status_code=404, detail="Product not found")
+        return {"deleted": True, "product_id": product_id}
