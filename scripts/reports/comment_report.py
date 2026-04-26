@@ -1,16 +1,11 @@
 """
-Comment sentiment report generation service (Azure OpenAI / GPT-4.1-mini)
+Comment sentiment report generation service
 """
 from typing import Optional
 import psycopg2
 from psycopg2.extras import RealDictCursor
-from scripts.config import DATABASE_URL
-from scripts.reports.transcript_report import (
-    fix_encoding,
-    _extract_validated_report,
-    get_report_llm_client,
-    REPORT_LLM_DEPLOYMENT,
-)
+from scripts.config import GROQ_API_KEY, GROQ_MODEL, DATABASE_URL
+from scripts.reports.transcript_report import fix_encoding, _extract_validated_report
 
 
 def _compute_weighted_sentiment_metrics(comments):
@@ -56,6 +51,12 @@ def _compute_weighted_sentiment_metrics(comments):
         "low_confidence_ratio": low_conf_ratio,
     }
 
+try:
+    from openai import OpenAI
+except ImportError:
+    OpenAI = None
+
+
 def build_comment_sentiment_report(video_id: str, product_name: str = "제품") -> Optional[str]:
     """
     Build comment sentiment analysis report using cached sentiment data.
@@ -90,10 +91,8 @@ def build_comment_sentiment_report(video_id: str, product_name: str = "제품") 
         
         total = len(comments)
         
-        try:
-            client = get_report_llm_client()
-        except ValueError as e:
-            error_msg = f"[ERROR] Comment report generation failed: {e}"
+        if OpenAI is None or not GROQ_API_KEY:
+            error_msg = "[ERROR] Comment report generation failed: Groq Llama not configured."
             print(error_msg)
             return error_msg
 
@@ -102,12 +101,13 @@ def build_comment_sentiment_report(video_id: str, product_name: str = "제품") 
         negative_comments = [c.get("text_raw", "") for c in comments if c.get("sentiment_label") == "negative"]
         neutral_comments = [c.get("text_raw", "") for c in comments if c.get("sentiment_label") == "neutral"]
         
-        # Format prompt sample blocks
+        # Format for Llama
         positive_text = "\n".join(f"- {c}" for c in positive_comments[:10])
         negative_text = "\n".join(f"- {c}" for c in negative_comments[:10])
         neutral_text = "\n".join(f"- {c}" for c in neutral_comments[:10])
-
-        prompt_template = f"""
+        
+        # Ask Llama to summarize the sentiment groups
+        llama_prompt = f"""
 당신은 유튜브 댓글 감정분석 전문가입니다. 다음은 이미 감정분석된 {product_name}에 대한 댓글들입니다.
 
 📊 감정분석 결과:
@@ -139,6 +139,11 @@ def build_comment_sentiment_report(video_id: str, product_name: str = "제품") 
 한국어로 전문적이고 객관적인 톤으로 분석해주세요.
 본문은 1000자 이내로 작성하고, 마지막 줄에 반드시 [END]만 단독 출력하세요.
 """
+        
+        client = OpenAI(
+            api_key=GROQ_API_KEY,
+            base_url="https://api.groq.com/openai/v1"
+        )
 
         max_attempts = 3
         for attempt in range(max_attempts):
@@ -146,9 +151,9 @@ def build_comment_sentiment_report(video_id: str, product_name: str = "제품") 
                 "\n\n형식이 맞지 않으면 다시 작성하세요: "
                 "본문 1000자 이내, 마지막 줄 [END]."
             )
-            prompt = prompt_template if attempt == 0 else (prompt_template + retry_prompt)
+            prompt = llama_prompt if attempt == 0 else (llama_prompt + retry_prompt)
             response = client.chat.completions.create(
-                model=REPORT_LLM_DEPLOYMENT,
+                model=GROQ_MODEL,
                 max_tokens=800,
                 messages=[{"role": "user", "content": prompt}]
             )

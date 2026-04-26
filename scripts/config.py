@@ -12,17 +12,9 @@ DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localho
 
 # API Keys
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY", "")
-
-# Groq — 댓글 필터링 Agent (comment_filtering_agent) 등에서 계속 사용
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 HF_TOKEN = os.getenv("HF_TOKEN", "")
-
-# Azure OpenAI — FR-005 영상 선택 Agent + 보고서 3종(transcript/comment/integrated) 생성용
-AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT", "")
-AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY", "")
-AZURE_OPENAI_DEPLOYMENT = os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4.1-mini")
-AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION", "2025-01-01-preview")
 
 # Server
 PORT = int(os.getenv("PORT", 8000))
