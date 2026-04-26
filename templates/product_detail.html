@@ -1,170 +1,340 @@
-
 <!DOCTYPE html>
-<html>
+<html lang="ko">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ product.name }} - Product Details</title>
+    <title>{{ product.name }} — 모아봄</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
-        body { font-family: Arial, sans-serif; margin: 20px; }
-        .container { max-width: 1000px; margin: 0 auto; }
-        h1 { color: #333; }
-        .product-info { background: #f5f5f5; padding: 15px; border-radius: 4px; margin-bottom: 20px; }
-        .product-info p { margin: 5px 0; }
-        .select-btn { padding: 12px 24px; background: #6f42c1; color: white; border: none; cursor: pointer; border-radius: 4px; font-size: 16px; }
-        .select-btn:hover { background: #5a32a3; }
-        .select-btn:disabled { background: #ccc; cursor: not-allowed; }
-        .videos-section { margin-top: 30px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
-        th { background: #007bff; color: white; }
-        tr:hover { background: #f5f5f5; }
-        .video-title a { color: #007bff; text-decoration: none; }
-        .video-title a:hover { text-decoration: underline; }
-        .video-thumb { width: 80px; height: 45px; object-fit: cover; border-radius: 3px; }
+        :root {
+            --bg: #f7f5fb;
+            --surface: #ffffff;
+            --surface-soft: #faf7ff;
+            --border: #e7e2f3;
+            --border-soft: #f0ebfa;
+            --text: #1f1c2e;
+            --muted: #6b6880;
+            --primary: #6f42c1;
+            --primary-strong: #5a32a3;
+            --primary-soft: #efe9fb;
+            --accent: #f06292;
+            --success: #20c997;
+            --warning: #f5a623;
+            --danger: #e35d6a;
+            --shadow: 0 4px 16px rgba(111, 66, 193, 0.08);
+            --shadow-strong: 0 10px 32px rgba(111, 66, 193, 0.18);
+        }
+
+        * { box-sizing: border-box; }
+        html, body { margin: 0; padding: 0; }
+        body {
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.55;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .page { max-width: 1080px; margin: 0 auto; padding: 28px 24px 80px; }
+
+        /* ── Top bar ────────────────────────────────────── */
+        .topbar { display: flex; align-items: center; gap: 10px; margin-bottom: 24px; }
+        .topbar a { text-decoration: none; color: inherit; display: flex; align-items: center; gap: 10px; }
+        .logo {
+            width: 32px; height: 32px; border-radius: 9px;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%);
+            color: white; display: grid; place-items: center;
+            font-weight: 800; font-size: 16px;
+            box-shadow: var(--shadow);
+        }
+        .brand { font-size: 16px; font-weight: 700; letter-spacing: -0.01em; }
+        .brand .sub { font-weight: 500; color: var(--muted); margin-left: 6px; font-size: 13px; }
+
         .back-link { margin-bottom: 20px; }
-        .back-link a { color: #007bff; }
-        .actions-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-        .sync-progress { width: 280px; height: 8px; background: #e9ecef; border-radius: 999px; overflow: hidden; display: none; }
+        .back-link a {
+            color: var(--muted); text-decoration: none; font-size: 14px;
+            display: inline-flex; align-items: center; gap: 4px;
+            transition: color 0.15s;
+        }
+        .back-link a:hover { color: var(--primary); }
+
+        /* ── Page header ───────────────────────────────── */
+        .header-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 18px;
+            padding: 28px 32px;
+            box-shadow: var(--shadow);
+            margin-bottom: 22px;
+        }
+        .header-card h1 {
+            margin: 0 0 6px;
+            font-size: 28px; font-weight: 800; letter-spacing: -0.02em;
+        }
+        .header-card .meta { color: var(--muted); font-size: 13px; }
+
+        /* ── Action row ────────────────────────────────── */
+        .actions-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 18px; }
+        .select-btn {
+            padding: 12px 22px;
+            background: linear-gradient(135deg, var(--primary), var(--primary-strong));
+            color: white; border: none; cursor: pointer;
+            border-radius: 12px; font-size: 15px; font-weight: 600;
+            font-family: inherit; transition: transform 0.1s, box-shadow 0.15s;
+            box-shadow: var(--shadow);
+        }
+        .select-btn:hover { transform: translateY(-1px); box-shadow: var(--shadow-strong); }
+        .select-btn:disabled { opacity: 0.55; cursor: not-allowed; transform: none; box-shadow: none; }
+        .sync-progress { width: 280px; height: 8px; background: var(--border-soft); border-radius: 999px; overflow: hidden; display: none; }
         .sync-progress.show { display: block; }
-        .sync-progress-fill { width: 0%; height: 100%; background: linear-gradient(90deg, #17a2b8, #28a745); transition: width 0.2s ease; }
-        .sync-status { font-size: 0.95em; color: #444; min-height: 20px; }
+        .sync-progress-fill { width: 0%; height: 100%; background: linear-gradient(90deg, var(--primary), var(--accent)); transition: width 0.2s ease; }
+        .sync-status { font-size: 14px; color: var(--muted); min-height: 20px; }
 
-        /* Selection config panel */
-        .select-config { background: #faf7ff; border: 1px solid #e0d4f5; padding: 14px 18px; border-radius: 6px; margin-top: 14px; display: none; }
+        /* ── Selection config panel ────────────────────── */
+        .select-config {
+            background: var(--surface-soft);
+            border: 1px solid var(--border);
+            padding: 20px 22px;
+            border-radius: 14px;
+            margin-top: 14px;
+            display: none;
+        }
         .select-config.show { display: block; }
-        .select-config label { margin-right: 18px; font-size: 0.95em; }
-        .select-config .slider-row { margin-top: 10px; display: flex; align-items: center; gap: 10px; }
-        .select-config input[type="range"] { flex: 1; max-width: 260px; }
+        .select-config .mode-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+        .select-config .mode-row label {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 10px 14px; border: 1px solid var(--border); border-radius: 10px;
+            background: white; cursor: pointer; font-size: 14px;
+            transition: border-color 0.15s, background 0.15s;
+        }
+        .select-config .mode-row input[type="radio"] { accent-color: var(--primary); }
+        .select-config .mode-row label:has(input:checked) {
+            border-color: var(--primary); background: var(--primary-soft); color: var(--primary-strong); font-weight: 600;
+        }
+        .select-config .slider-row {
+            margin-top: 10px; display: flex; align-items: center; gap: 14px;
+            font-size: 14px;
+        }
+        .select-config .slider-row label { min-width: 180px; color: var(--muted); }
+        .select-config .slider-row strong { color: var(--text); }
+        .select-config input[type="range"] { flex: 1; max-width: 320px; accent-color: var(--primary); }
+        .run-row { margin-top: 18px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 
-        /* Modal */
-        .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: none; z-index: 1000; align-items: flex-start; justify-content: center; overflow-y: auto; padding: 30px 15px; }
+        /* ── Videos section ────────────────────────────── */
+        .section { margin-top: 28px; }
+        .section h2 { font-size: 20px; font-weight: 700; margin: 0 0 14px; letter-spacing: -0.01em; }
+        .section h2 .count { color: var(--muted); font-weight: 500; margin-left: 6px; font-size: 16px; }
+
+        .video-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
+        .video-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            overflow: hidden;
+            text-decoration: none; color: inherit;
+            display: flex; flex-direction: column;
+            transition: border-color 0.15s, transform 0.1s, box-shadow 0.15s;
+        }
+        .video-card:hover { border-color: var(--primary); transform: translateY(-2px); box-shadow: var(--shadow-strong); }
+        .video-card .thumb-wrap { position: relative; aspect-ratio: 16 / 9; background: var(--bg); overflow: hidden; }
+        .video-card .thumb-wrap img { width: 100%; height: 100%; object-fit: cover; display: block; }
+        .video-card .body { padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
+        .video-card .title {
+            font-size: 14px; font-weight: 600; line-height: 1.45;
+            display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+            overflow: hidden; text-overflow: ellipsis;
+        }
+        .video-card .stats { font-size: 12px; color: var(--muted); display: flex; gap: 10px; flex-wrap: wrap; margin-top: auto; }
+        .video-card .stats span { display: inline-flex; align-items: center; gap: 3px; }
+
+        .empty {
+            background: var(--surface); border: 1px dashed var(--border);
+            border-radius: 14px; padding: 32px; text-align: center; color: var(--muted);
+        }
+
+        /* ── Modal ─────────────────────────────────────── */
+        .modal-backdrop {
+            position: fixed; inset: 0; background: rgba(31, 28, 46, 0.55);
+            display: none; z-index: 1000; align-items: flex-start; justify-content: center;
+            overflow-y: auto; padding: 32px 16px;
+            backdrop-filter: blur(2px);
+        }
         .modal-backdrop.show { display: flex; }
-        .modal { background: white; border-radius: 8px; max-width: 900px; width: 100%; padding: 22px; box-shadow: 0 12px 32px rgba(0,0,0,0.2); }
-        .modal h2 { margin-top: 0; }
-        .modal-close { float: right; background: none; border: none; font-size: 22px; cursor: pointer; color: #888; }
-        .modal-close:hover { color: #333; }
-        .modal-actions { margin-top: 18px; text-align: right; }
-        .modal-actions button { padding: 9px 18px; border-radius: 4px; border: none; cursor: pointer; font-size: 14px; margin-left: 8px; }
-        .btn-primary { background: #28a745; color: white; }
-        .btn-primary:hover { background: #218838; }
-        .btn-secondary { background: #e9ecef; color: #333; }
-        .btn-secondary:hover { background: #dee2e6; }
+        .modal {
+            background: white; border-radius: 18px; max-width: 920px; width: 100%;
+            padding: 26px 28px; box-shadow: 0 24px 60px rgba(31, 28, 46, 0.35);
+        }
+        .modal h2 { margin: 0 0 16px; font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
+        .modal-close {
+            float: right; background: none; border: none; font-size: 22px;
+            cursor: pointer; color: var(--muted); margin: -6px -10px 0 0;
+            width: 32px; height: 32px; border-radius: 8px; transition: background 0.15s, color 0.15s;
+        }
+        .modal-close:hover { color: var(--text); background: var(--border-soft); }
+        .modal-actions { margin-top: 22px; text-align: right; display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+        .btn-primary {
+            padding: 10px 18px; border-radius: 10px; border: none; cursor: pointer;
+            font-size: 14px; font-weight: 600; font-family: inherit;
+            background: linear-gradient(135deg, var(--primary), var(--primary-strong));
+            color: white; transition: transform 0.1s, box-shadow 0.15s;
+        }
+        .btn-primary:hover { transform: translateY(-1px); box-shadow: var(--shadow); }
+        .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+        .btn-secondary {
+            padding: 10px 18px; border-radius: 10px; cursor: pointer;
+            font-size: 14px; font-weight: 600; font-family: inherit;
+            background: var(--border-soft); color: var(--text); border: 1px solid var(--border);
+        }
+        .btn-secondary:hover { background: var(--primary-soft); color: var(--primary-strong); border-color: var(--primary-soft); }
 
-        /* Selection result cards */
-        .result-card { border: 1px solid #ddd; border-radius: 6px; padding: 12px 14px; margin-bottom: 10px; display: flex; gap: 12px; }
-        .result-card .rank { font-size: 22px; font-weight: bold; color: #6f42c1; min-width: 32px; text-align: center; }
+        /* ── Selection result cards ────────────────────── */
+        .result-card {
+            border: 1px solid var(--border); border-radius: 12px;
+            padding: 14px 16px; margin-bottom: 10px;
+            display: flex; gap: 14px; background: white;
+        }
+        .result-card .rank {
+            font-size: 22px; font-weight: 800; color: var(--primary);
+            min-width: 36px; text-align: center;
+        }
         .result-card .body { flex: 1; }
-        .result-card .title { font-weight: bold; margin-bottom: 4px; }
-        .result-card .meta { font-size: 0.85em; color: #666; margin-bottom: 6px; }
-        .result-card .tier-badge { display: inline-block; padding: 1px 7px; border-radius: 3px; font-size: 0.78em; color: white; margin-left: 4px; }
+        .result-card .title { font-weight: 700; margin-bottom: 4px; line-height: 1.4; }
+        .result-card .meta { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+        .tier-badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; color: white; margin-left: 4px; font-weight: 600; }
         .tier-mega { background: #dc3545; }
         .tier-large { background: #fd7e14; }
-        .tier-mid { background: #ffc107; color: #333; }
-        .tier-small { background: #20c997; }
-        .tier-micro { background: #0dcaf0; color: #333; }
-        .result-card .reasons { margin: 6px 0; }
-        .reason-chip { display: inline-block; background: #f0e7ff; color: #5a32a3; font-size: 0.78em; padding: 2px 8px; border-radius: 10px; margin-right: 4px; }
-        .result-card .rationale-short { font-size: 0.9em; color: #444; font-style: italic; }
-        .why-btn { font-size: 0.8em; padding: 3px 9px; background: none; border: 1px solid #6f42c1; color: #6f42c1; border-radius: 3px; cursor: pointer; margin-left: 6px; }
-        .why-btn:hover { background: #6f42c1; color: white; }
+        .tier-mid { background: #ffc107; color: #2c2300; }
+        .tier-small { background: var(--success); }
+        .tier-micro { background: #0dcaf0; color: #033b45; }
+        .reasons { margin: 6px 0; }
+        .reason-chip {
+            display: inline-block; background: var(--primary-soft); color: var(--primary-strong);
+            font-size: 12px; padding: 3px 10px; border-radius: 999px; margin-right: 4px; margin-bottom: 4px;
+            font-weight: 500;
+        }
+        .rationale-short { font-size: 13px; color: #4f4c63; font-style: italic; }
+        .why-btn {
+            font-size: 12px; padding: 4px 10px; background: white;
+            border: 1px solid var(--primary); color: var(--primary);
+            border-radius: 999px; cursor: pointer; margin-left: 6px;
+            font-family: inherit; font-weight: 500;
+        }
+        .why-btn:hover { background: var(--primary); color: white; }
 
-        /* Candidate list for custom mode */
-        .candidate-list { max-height: 420px; overflow-y: auto; border: 1px solid #eee; border-radius: 4px; padding: 8px; margin-top: 10px; }
-        .candidate-item { display: flex; gap: 10px; padding: 8px; border-bottom: 1px solid #f0f0f0; align-items: center; }
+        /* ── Candidate list (custom mode) ─────────────── */
+        .candidate-list { max-height: 420px; overflow-y: auto; border: 1px solid var(--border); border-radius: 12px; padding: 8px; margin-top: 10px; background: var(--surface-soft); }
+        .candidate-item { display: flex; gap: 10px; padding: 10px; border-bottom: 1px solid var(--border-soft); align-items: center; cursor: pointer; }
         .candidate-item:last-child { border-bottom: none; }
-        .candidate-item img { width: 90px; height: 50px; object-fit: cover; border-radius: 3px; }
-        .candidate-item .info { flex: 1; font-size: 0.9em; }
-        .candidate-item .info .t { font-weight: bold; }
-        .candidate-item .info .c { color: #666; font-size: 0.85em; }
-        .candidate-count { font-size: 0.9em; color: #6f42c1; margin: 6px 0; }
+        .candidate-item:hover { background: white; border-radius: 8px; }
+        .candidate-item input[type="checkbox"] { accent-color: var(--primary); width: 16px; height: 16px; }
+        .candidate-item .info { flex: 1; font-size: 13px; }
+        .candidate-item .info .t { font-weight: 600; line-height: 1.4; margin-bottom: 2px; }
+        .candidate-item .info .c { color: var(--muted); font-size: 12px; }
+        .candidate-count { font-size: 13px; color: var(--primary-strong); margin: 8px 0; font-weight: 500; }
 
-        /* Score bars (Why modal) */
-        .score-bar-row { display: flex; align-items: center; margin: 4px 0; font-size: 0.9em; }
-        .score-bar-label { width: 140px; }
-        .score-bar-track { flex: 1; height: 14px; background: #f0f0f0; border-radius: 7px; overflow: hidden; }
-        .score-bar-fill { height: 100%; background: linear-gradient(90deg, #6f42c1, #a06fd5); }
-        .score-bar-value { width: 50px; text-align: right; font-family: monospace; color: #555; }
-        .rationale-full-box { background: #faf7ff; border-left: 3px solid #6f42c1; padding: 10px 14px; margin: 12px 0; line-height: 1.5; }
-        .diversity-line { background: #eefaf3; border-left: 3px solid #28a745; padding: 8px 12px; font-size: 0.9em; margin: 10px 0; }
+        /* ── Diversity / score bars ───────────────────── */
+        .diversity-line {
+            background: #ecfaf3; border-left: 3px solid var(--success);
+            padding: 10px 14px; font-size: 13px; margin: 8px 0 16px; border-radius: 6px;
+            color: #0f5132;
+        }
+        .score-bar-row { display: flex; align-items: center; margin: 6px 0; font-size: 13px; gap: 10px; }
+        .score-bar-label { width: 140px; color: var(--muted); }
+        .score-bar-track { flex: 1; height: 10px; background: var(--border-soft); border-radius: 999px; overflow: hidden; }
+        .score-bar-fill { height: 100%; background: linear-gradient(90deg, var(--primary), var(--accent)); }
+        .score-bar-value { width: 100px; text-align: right; font-family: ui-monospace, "SF Mono", Consolas, monospace; color: var(--muted); font-size: 12px; }
+        .rationale-full-box {
+            background: var(--surface-soft); border-left: 3px solid var(--primary);
+            padding: 12px 16px; margin: 12px 0; line-height: 1.55; border-radius: 6px;
+            font-size: 14px;
+        }
+
+        @media (max-width: 720px) {
+            .page { padding: 20px 16px 60px; }
+            .header-card { padding: 22px; border-radius: 16px; }
+            .header-card h1 { font-size: 22px; }
+            .video-grid { grid-template-columns: 1fr 1fr; }
+            .modal { padding: 22px; border-radius: 14px; }
+            .select-btn, .btn-primary { width: 100%; }
+        }
     </style>
 </head>
 <body>
-    <div class="container">
+    <div class="page">
+        <!-- Top bar -->
+        <div class="topbar">
+            <a href="/products">
+                <div class="logo">M</div>
+                <div class="brand">모아봄<span class="sub">MOABOM</span></div>
+            </a>
+        </div>
+
         <div class="back-link">
-            <a href="/products">← Back to Products</a>
+            <a href="/products">← 제품 목록으로</a>
         </div>
 
-        <h1>{{ product.name }}</h1>
+        <!-- Header card -->
+        <div class="header-card">
+            <h1>{{ product.name }}</h1>
+            <div class="meta">등록일: {{ product.created_at }}</div>
 
-        <div class="product-info">
-            <p><strong>Created:</strong> {{ product.created_at }}</p>
+            <div class="actions-row">
+                <button class="select-btn" onclick="toggleSelectConfig()" id="selectToggleBtn">🎯 AI 영상 선택</button>
+                <div id="syncProgress" class="sync-progress" aria-hidden="true">
+                    <div id="syncProgressFill" class="sync-progress-fill"></div>
+                </div>
+                <span id="syncStatus" class="sync-status"></span>
+            </div>
+
+            <div id="selectConfig" class="select-config">
+                <div class="mode-row">
+                    <label><input type="radio" name="selMode" value="auto" checked> Auto (AI 자동 선택)</label>
+                    <label><input type="radio" name="selMode" value="custom"> Custom (직접 선택)</label>
+                </div>
+                <div class="slider-row">
+                    <label for="kSlider">선택할 영상 수: <strong id="kValue">5</strong></label>
+                    <input type="range" id="kSlider" min="3" max="10" value="5" oninput="document.getElementById('kValue').textContent=this.value">
+                </div>
+                <div class="slider-row">
+                    <label for="poolSlider">후보 풀 크기: <strong id="poolValue">30</strong></label>
+                    <input type="range" id="poolSlider" min="25" max="50" value="30" oninput="document.getElementById('poolValue').textContent=this.value">
+                </div>
+                <div class="run-row">
+                    <button class="btn-primary" onclick="runSelection()" id="runSelBtn">AI 선택 시작</button>
+                    <span id="selStatus" style="color: var(--muted); font-size: 14px;"></span>
+                </div>
+            </div>
         </div>
 
-        <div class="actions-row">
-            <button class="select-btn" onclick="toggleSelectConfig()" id="selectToggleBtn">🎯 AI 영상 선택</button>
-            <div id="syncProgress" class="sync-progress" aria-hidden="true">
-                <div id="syncProgressFill" class="sync-progress-fill"></div>
-            </div>
-            <span id="syncStatus" class="sync-status"></span>
-        </div>
-
-        <div id="selectConfig" class="select-config">
-            <div>
-                <label><input type="radio" name="selMode" value="auto" checked> Auto (AI 자동 선택)</label>
-                <label><input type="radio" name="selMode" value="custom"> Custom (직접 선택)</label>
-            </div>
-            <div class="slider-row">
-                <label for="kSlider">선택할 영상 수: <strong id="kValue">5</strong></label>
-                <input type="range" id="kSlider" min="3" max="10" value="5" oninput="document.getElementById('kValue').textContent=this.value">
-            </div>
-            <div class="slider-row">
-                <label for="poolSlider">후보 풀 크기: <strong id="poolValue">30</strong></label>
-                <input type="range" id="poolSlider" min="25" max="50" value="30" oninput="document.getElementById('poolValue').textContent=this.value">
-            </div>
-            <div style="margin-top: 12px;">
-                <button class="btn-primary" onclick="runSelection()" id="runSelBtn">AI 선택 시작</button>
-                <span id="selStatus" style="margin-left: 10px; color: #555;"></span>
-            </div>
-        </div>
-
-        <div class="videos-section">
-            <h2>Videos ({{ videos|length }})</h2>
+        <!-- Videos section -->
+        <section class="section">
+            <h2>분석 영상 <span class="count">{{ videos|length }}</span></h2>
             {% if videos %}
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Thumbnail</th>
-                            <th>Title</th>
-                            <th>Views</th>
-                            <th>Likes</th>
-                            <th>Comments</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for video in videos %}
-                            <tr>
-                                <td>
-                                    {% if video.thumbnail_url %}
-                                        <img src="{{ video.thumbnail_url }}" alt="thumbnail" class="video-thumb">
-                                    {% endif %}
-                                </td>
-                                <td class="video-title">
-                                    <a href="/products/{{ product.product_id }}/videos/{{ video.video_id }}">
-                                        {{ video.title[:50] }}...
-                                    </a>
-                                </td>
-                                <td>{{ video.view_count }}</td>
-                                <td>{{ video.like_count }}</td>
-                                <td>{{ video.comment_count }}</td>
-                            </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+                <div class="video-grid">
+                    {% for video in videos %}
+                        <a class="video-card" href="/products/{{ product.product_id }}/videos/{{ video.video_id }}">
+                            <div class="thumb-wrap">
+                                {% if video.thumbnail_url %}
+                                    <img src="{{ video.thumbnail_url }}" alt="thumbnail">
+                                {% endif %}
+                            </div>
+                            <div class="body">
+                                <div class="title">{{ video.title }}</div>
+                                <div class="stats">
+                                    <span>👁 {{ video.view_count }}</span>
+                                    <span>👍 {{ video.like_count }}</span>
+                                    <span>💬 {{ video.comment_count }}</span>
+                                </div>
+                            </div>
+                        </a>
+                    {% endfor %}
+                </div>
             {% else %}
-                <p>No videos yet. Click "AI 영상 선택" to fetch them.</p>
+                <div class="empty">아직 분석된 영상이 없습니다. 위 "AI 영상 선택" 버튼을 눌러 시작하세요.</div>
             {% endif %}
-        </div>
+        </section>
     </div>
 
     <!-- Selection result modal -->
@@ -211,16 +381,12 @@
             const status = document.getElementById('selStatus');
 
             btn.disabled = true;
-            // Custom flow의 첫 호출은 후보 미리보기만 — 댓글 분석은 확정 후로 미룬다.
             const isCustomPreview = (mode === 'custom');
             status.textContent = isCustomPreview
                 ? 'YouTube 후보 수집 + 스코어링 + LLM 평가 중... (최대 60초)'
                 : 'YouTube 후보 수집 → AI 영상 선정 → 댓글 수집·분석 중... (최대 5분)';
 
             try {
-                // 두 모드 모두 첫 호출은 mode=auto로 후보를 가져온다.
-                // - Auto:   바로 댓글 파이프라인까지 돌려 보고서 3종을 채운다.
-                // - Custom: 미리보기만 받기 위해 process_comments=false 로 스킵.
                 const response = await fetch('/products/' + PRODUCT_ID + '/select-videos', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -296,8 +462,8 @@
                 `;
             }).join('');
             return `
-                <h3 style="margin-top:20px;">후보 30개 (Auto 선택된 ${k}개는 미리 체크됨)</h3>
-                <div class="candidate-count">3~10개 선택 후 하단 "이 선택으로 확정" 클릭</div>
+                <h3 style="margin-top:20px; font-size:16px; font-weight:700;">후보 ${items.length}개 <span style="color: var(--muted); font-weight:500; font-size:14px;">(Auto 선정 ${k}개 미리 체크됨)</span></h3>
+                <div class="candidate-count">3~10개 선택 후 하단 "Custom 선택으로 확정" 클릭</div>
                 <div class="candidate-list">${listHtml}</div>
             `;
         }
@@ -318,7 +484,6 @@
                 confirmBtn.textContent = 'Custom 선택으로 확정';
                 confirmBtn.onclick = confirmSelection;
             } else {
-                // Auto mode: backend already persisted selection; reload to populate videos table.
                 candDiv.style.display = 'none';
                 candDiv.innerHTML = '';
                 confirmBtn.style.display = 'inline-block';
@@ -330,8 +495,6 @@
 
         function closeSelectModal() {
             document.getElementById('selectModal').classList.remove('show');
-            // Auto mode persists on the server side; ensure user lands on the refreshed
-            // video list regardless of how they dismiss the modal.
             if (lastModalMode === 'auto' && lastSelection) {
                 location.reload();
             }
@@ -408,15 +571,15 @@
             }
 
             document.getElementById('whyBody').innerHTML = `
-                <p><strong>채널:</strong> ${escapeHtml(v.channel_name)}
+                <p style="margin: 0 0 14px;"><strong>채널:</strong> ${escapeHtml(v.channel_name)}
                    <span class="tier-badge tier-${v.tier}">${tierLabel(v.tier)}</span>
                    · <strong>최종 점수:</strong> ${v.final_score.toFixed(3)}
                 </p>
-                <h3 style="margin-top:16px;">점수 차원 (0~1)</h3>
+                <h3 style="margin: 14px 0 8px; font-size: 14px; color: var(--muted); font-weight: 600;">점수 차원 (0~1)</h3>
                 ${barsHtml}
-                <h3 style="margin-top:16px;">선정 이유</h3>
+                <h3 style="margin: 18px 0 8px; font-size: 14px; color: var(--muted); font-weight: 600;">선정 이유</h3>
                 <div>${(v.selection_reasons || []).map(r => '<span class="reason-chip">' + r + '</span>').join('')}</div>
-                <h3 style="margin-top:16px;">AI 평가</h3>
+                <h3 style="margin: 18px 0 8px; font-size: 14px; color: var(--muted); font-weight: 600;">AI 평가</h3>
                 <div class="rationale-full-box"><strong>요약:</strong> ${escapeHtml(v.rationale_short || '(없음)')}</div>
                 <div class="rationale-full-box">${escapeHtml(v.rationale_full || '(없음)')}</div>
             `;
