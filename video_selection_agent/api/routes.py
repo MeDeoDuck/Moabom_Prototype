@@ -16,7 +16,7 @@ from uuid import UUID
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-from scripts.database.queries import query_one
+from scripts.database.queries import execute_update, query_one
 from video_selection_agent.core.agent import VideoSelectionAgent
 from video_selection_agent.core.models import ProductContext
 from video_selection_agent.core.policy import SelectionPolicyConfig
@@ -167,6 +167,17 @@ def register_selection_routes(app: FastAPI) -> None:
             }
             for c in decision.candidates_preview
         }
+        # 새 선정 결과로 갈아끼우기 위해 이 제품의 기존 영상을 먼저 정리한다.
+        # Custom UI의 "후보 미리보기" 호출(process_comments=False)은 사용자가 아직
+        # 확정하지 않은 단계라 기존 데이터를 건드리지 않는다.
+        # videos.product_id ON DELETE CASCADE 로 comments / video_transcripts /
+        # video_reports / comment_sentiments / agent_decisions 까지 함께 정리됨.
+        if request.process_comments:
+            execute_update(
+                "DELETE FROM videos WHERE product_id = %s",
+                (product_id,),
+            )
+
         save_selection(decision, all_scores=all_scores, candidate_lookup=candidate_lookup)
 
         if request.process_comments:
