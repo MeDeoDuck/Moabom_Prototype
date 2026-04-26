@@ -34,41 +34,138 @@ class SelectVideosRequest(BaseModel):
     process_comments: bool = True
 
 
+_FALLBACK_POSITIVE_KEYWORDS = {
+    "좋다", "훌륭", "추천", "완벽", "최고", "멋진", "빠르다", "빠른", "강력", "강력한",
+    "좋은", "좋습니다", "훌륭합니다", "amazing", "great", "excellent", "awesome",
+    "best", "love", "perfect", "worth", "impressed", "beautiful", "fast", "powerful",
+}
+_FALLBACK_NEGATIVE_KEYWORDS = {
+    "나쁘다", "문제", "느리다", "느린", "비싸다", "비싼", "약하다", "약한", "못쓸",
+    "망했", "실망", "후회", "환불", "bad", "terrible", "poor", "awful", "slow",
+    "expensive", "waste", "regret", "disappointing", "broken", "fragile",
+}
+
+
+def _fallback_collect_comments(video_id: str) -> int:
+    """Agent 불가 시 단순 YouTube API 수집 + 키워드 sentiment.
+
+    `scripts/api/sync.py` 의 fallback 분기와 동일한 결과를 만들어 댓글/통합
+    보고서가 빈 채로 남지 않도록 graceful degrade.
+    """
+    from scripts.database.connection import get_connection
+    from scripts.database.queries import execute_update
+    from scripts.youtube.comment_service import fetch_video_comments
+
+    try:
+        comments = fetch_video_comments(video_id, max_pages=2)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[SELECT] [{video_id}] Fallback fetch failed: {exc}")
+        return 0
+
+    if not comments:
+        return 0
+
+    inserted = 0
+    for c in comments:
+        try:
+            execute_update(
+                """INSERT INTO comments (comment_id, video_id, text_raw, is_product_related)
+                   VALUES (%s, %s, %s, %s)
+                   ON CONFLICT (comment_id) DO UPDATE SET
+                       video_id = EXCLUDED.video_id,
+                       text_raw = EXCLUDED.text_raw,
+                       is_product_related = EXCLUDED.is_product_related""",
+                (c["comment_id"], video_id, c["text_raw"], True),
+            )
+
+            text = (c["text_raw"] or "").lower()
+            pos = sum(1 for kw in _FALLBACK_POSITIVE_KEYWORDS if kw in text)
+            neg = sum(1 for kw in _FALLBACK_NEGATIVE_KEYWORDS if kw in text)
+            if pos > neg:
+                label, score = "positive", 0.7
+            elif neg > pos:
+                label, score = "negative", 0.3
+            else:
+                label, score = "neutral", 0.5
+
+            conn = get_connection()
+            cur = conn.cursor()
+            cur.execute(
+                "DELETE FROM comment_sentiments WHERE comment_id = %s",
+                (c["comment_id"],),
+            )
+            cur.execute(
+                """INSERT INTO comment_sentiments (comment_id, sentiment_label, sentiment_score, analysis_weight, created_at)
+                   VALUES (%s, %s, %s, %s, NOW())""",
+                (c["comment_id"], label, score, 1.0),
+            )
+            conn.commit()
+            cur.close()
+            conn.close()
+            inserted += 1
+        except Exception as exc:  # noqa: BLE001
+            print(
+                f"[SELECT] [{video_id}] Fallback insert failed for comment "
+                f"{c.get('comment_id')}: {exc}"
+            )
+            continue
+
+    return inserted
+
+
 def _process_comments_for_videos(product_name: str, video_ids: Iterable[str]) -> None:
-    """선정된 영상들에 대해 댓글 수집·LLM 분류·감정 분석 파이프라인을 병렬 실행."""
+    """선정된 영상들에 대해 댓글 수집·LLM 분류·감정 분석 파이프라인을 실행.
+
+    Agent(`comment_filtering_agent`) 사용 가능 시 정확도 높은 LLM 경로로 병렬 처리,
+    불가 시 단순 YouTube API 수집 + 키워드 sentiment 로 graceful degrade.
+    """
     ids = [vid for vid in video_ids if vid]
     if not ids:
         return
 
+    agent_available = False
+    parallel_workers = 3
+    process_comments_with_agent = None
     try:
         from scripts.api.sync import (
             AGENT_AVAILABLE,
             PARALLEL_WORKERS,
-            process_comments_with_agent,
+            process_comments_with_agent as _process_agent,
         )
+
+        agent_available = AGENT_AVAILABLE
+        parallel_workers = PARALLEL_WORKERS
+        process_comments_with_agent = _process_agent
     except ImportError as exc:
         print(f"[SELECT] Comment agent module unavailable: {exc}")
-        return
 
-    if not AGENT_AVAILABLE:
-        print("[SELECT] Comment filtering agent not available; skipping comment processing")
-        return
-
-    print(
-        f"[SELECT] Comment processing start: videos={len(ids)}, parallel={PARALLEL_WORKERS}"
-    )
-    with ThreadPoolExecutor(max_workers=PARALLEL_WORKERS) as executor:
-        futures = {
-            executor.submit(process_comments_with_agent, vid, product_name): vid
-            for vid in ids
-        }
-        for future in as_completed(futures):
-            vid = futures[future]
-            try:
-                stats = future.result()
-                print(f"[SELECT] [{vid}] Comments processed: {stats}")
-            except Exception as exc:  # noqa: BLE001 - log and continue per-video
-                print(f"[SELECT] [{vid}] Comment processing failed: {exc}")
+    if agent_available and process_comments_with_agent is not None:
+        print(
+            f"[SELECT] Comment processing start (agent): "
+            f"videos={len(ids)}, parallel={parallel_workers}"
+        )
+        with ThreadPoolExecutor(max_workers=parallel_workers) as executor:
+            futures = {
+                executor.submit(process_comments_with_agent, vid, product_name): vid
+                for vid in ids
+            }
+            for future in as_completed(futures):
+                vid = futures[future]
+                try:
+                    stats = future.result()
+                    print(f"[SELECT] [{vid}] Agent comments processed: {stats}")
+                except Exception as exc:  # noqa: BLE001
+                    print(
+                        f"[SELECT] [{vid}] Agent failed: {exc}; "
+                        "falling back to simple collection"
+                    )
+                    n = _fallback_collect_comments(vid)
+                    print(f"[SELECT] [{vid}] Fallback collected={n}")
+    else:
+        print(f"[SELECT] Comment processing start (fallback): videos={len(ids)}")
+        for vid in ids:
+            n = _fallback_collect_comments(vid)
+            print(f"[SELECT] [{vid}] Fallback collected={n}")
 
 
 def _decision_to_response(decision: Any) -> dict:
