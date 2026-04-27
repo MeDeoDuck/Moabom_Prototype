@@ -263,7 +263,7 @@
 
         /* ── Selection progress overlay (Target #1) ────────── */
         .sel-overlay {
-            position: fixed; inset: 0; z-index: 1000;
+            position: fixed; inset: 0; z-index: 1100;
             background: rgba(31, 28, 46, 0.55); backdrop-filter: blur(4px);
             display: none; align-items: center; justify-content: center;
         }
@@ -466,16 +466,21 @@
 
         // ── Selection progress overlay helpers ─────────────
         let selStepTimers = [];
-        function showSelOverlay(steps, estimatedMs, title, sub) {
+        function showSelOverlay(steps, estimatedMs, title, sub, labels) {
             const overlay = document.getElementById('selOverlay');
             if (title) document.getElementById('selOverlayTitle').textContent = title;
             if (sub) document.getElementById('selOverlaySub').textContent = sub;
 
             const stepEls = overlay.querySelectorAll('.sel-step');
-            stepEls.forEach(s => {
+            stepEls.forEach((s, idx) => {
                 s.classList.remove('active', 'done');
                 s.querySelector('.icon').textContent = s.dataset.step;
                 s.style.display = (parseInt(s.dataset.step, 10) <= steps) ? 'flex' : 'none';
+                const spans = s.querySelectorAll('span');
+                if (spans[1]) {
+                    if (!s.dataset.originalLabel) s.dataset.originalLabel = spans[1].textContent;
+                    spans[1].textContent = (labels && labels[idx]) ? labels[idx] : s.dataset.originalLabel;
+                }
             });
             overlay.classList.add('show');
 
@@ -663,8 +668,14 @@
             const pool = parseInt(document.getElementById('poolSlider').value, 10);
             const btn = document.getElementById('confirmSelBtn');
             btn.disabled = true;
-            btn.textContent = '확정 + 댓글 분석 중... (최대 5분)';
-            showSelOverlay(3, 240_000, 'Custom 선택 확정 진행 중', '댓글 수집·분석까지 최대 5분 소요됩니다.');
+            btn.textContent = '확정 + 댓글 분석 중... (약 1분)';
+            showSelOverlay(
+                2,
+                120_000,
+                'Custom 선택 확정 진행 중',
+                '영상 분석과 댓글 감성 분석을 진행합니다. 보통 1분 내외 소요됩니다.',
+                ['영상 분석 + 점수·rationale 갱신', '댓글 수집 + AI 감성 분석']
+            );
             try {
                 const response = await fetch('/products/' + PRODUCT_ID + '/select-videos', {
                     method: 'POST',
