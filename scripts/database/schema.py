@@ -517,6 +517,24 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_selection_scores_video ON video_selection_scores(video_id);
     """)
 
+    # ========================================
+    # 제품 단위 통합 인사이트 보고서 (입력: 영상별 자막 보고서 N건)
+    # ========================================
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS product_integrated_reports (
+            id                   SERIAL PRIMARY KEY,
+            product_id           INT NOT NULL REFERENCES tech_products(product_id) ON DELETE CASCADE,
+            video_ids            TEXT NOT NULL,
+            source_video_count   INT NOT NULL,
+            report_text          TEXT NOT NULL,
+            model_used           VARCHAR(64),
+            created_at           TIMESTAMP DEFAULT NOW()
+        );
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_pir_product ON product_integrated_reports(product_id);
+    """)
+
     conn.commit()
     cursor.close()
     conn.close()
