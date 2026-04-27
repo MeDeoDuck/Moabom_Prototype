@@ -556,7 +556,7 @@
                 <span><strong id="pirProgressPercent">0%</strong></span>
                 <span>남은 시간 약 <strong id="pirProgressRemain">--</strong>초</span>
             </div>
-            <div class="sel-step" data-pir-step="1"><span class="icon">1</span><span>영상별 자막 보고서 점검 및 보완</span></div>
+            <div class="sel-step" data-pir-step="1"><span class="icon">1</span><span>영상별 자막 수집 및 자막 기반 보고서 생성</span></div>
             <div class="sel-step" data-pir-step="2"><span class="icon">2</span><span>9섹션 통합 인사이트 보고서 합성</span></div>
         </div>
     </div>
@@ -983,9 +983,10 @@
             btn.disabled = true;
             status.textContent = '';
 
-            // Estimate: base 30s for synthesis + 12s per video for transcript-report top-up.
-            // Floor at 60s, ceil at 180s.
-            const estimatedMs = Math.min(180000, Math.max(60000, 30000 + videoIds.length * 12000));
+            // Estimate: base 45s for 9-section synthesis + ~50s per video worst case
+            // (자막 fetch ~15s + transcript_report 생성 ~30s) when reports/transcripts are missing.
+            // Floor at 90s (모두 캐시된 best case 가까이), ceil at 360s (= 6분, worst case).
+            const estimatedMs = Math.min(360000, Math.max(90000, 45000 + videoIds.length * 50000));
             pirStartProgress(estimatedMs, videoIds.length);
 
             try {

@@ -10,7 +10,7 @@ from datetime import date
 from typing import List, Dict, Optional, Tuple
 
 from scripts.config import AZURE_OPENAI_API_KEY
-from scripts.database.queries import query_one, query_all, execute_insert
+from scripts.database.queries import query_one, query_all, execute_insert, execute_update
 from scripts.reports.transcript_report import (
     build_transcript_report,
     fix_encoding,
@@ -19,6 +19,7 @@ from scripts.reports.transcript_report import (
 )
 from scripts.reports.integrated_report import upsert_video_report
 from scripts.utils.prompt_manager import build_product_integrated_insight_prompt
+from scripts.youtube.transcript_service import fetch_video_transcript
 
 
 # 영상별 보고서 1건당 입력 시 잘라낼 최대 길이 (토큰 한도 보호)
@@ -31,17 +32,49 @@ HEURISTIC_MODEL_LABEL = "heuristic"
 
 # ── 1) 입력 수집 ─────────────────────────────────────────────────
 
+def _fetch_and_save_transcript(video_id: str) -> Optional[str]:
+    """video_transcripts에 자막이 없을 때 youtube에서 가져와 저장하고 본문을 반환한다.
+    실패 시 None.
+    """
+    fetched = fetch_video_transcript(video_id)
+    if not fetched or not fetched.get("transcript_text"):
+        return None
+    execute_update(
+        """INSERT INTO video_transcripts (video_id, transcript_text, language_code, segment_count, source)
+           VALUES (%s, %s, %s, %s, %s)
+           ON CONFLICT (video_id)
+           DO UPDATE SET
+             transcript_text = EXCLUDED.transcript_text,
+             language_code   = EXCLUDED.language_code,
+             segment_count   = EXCLUDED.segment_count,
+             source          = EXCLUDED.source,
+             updated_at      = NOW()""",
+        (
+            video_id,
+            fetched["transcript_text"],
+            fetched.get("language_code"),
+            fetched.get("segment_count"),
+            "youtube_transcript_api",
+        ),
+    )
+    return fetched["transcript_text"]
+
+
 def collect_transcript_reports_for_product(
     product_id: int,
     video_ids: List[str],
 ) -> List[Dict]:
     """
     선택된 영상들에 대해 video_reports.transcript_report를 조회한다.
-    없는 영상은 video_transcripts에서 transcript_text를 읽어 build_transcript_report로
-    생성한 뒤 upsert_video_report로 저장하고, 그 결과도 함께 반환한다.
+
+    종합 인사이트는 영상 상세 페이지 방문 여부와 무관하게 self-contained 동작해야 하므로,
+    각 영상에 대해 다음 순서로 자체 보완한다:
+      1) video_reports.transcript_report 가 있으면 사용
+      2) 없으면 video_transcripts.transcript_text 로 build_transcript_report 호출
+      3) 자막 본문도 없으면 fetch_video_transcript 로 YouTube에서 직접 받아 저장 후 위 2)
+      4) 모든 단계 실패한 영상만 결과에서 제외
 
     반환: [{"video_id": ..., "title": ..., "transcript_report": ...}, ...]
-    transcript_text 자체가 없는 영상은 결과에서 제외한다.
     """
     results: List[Dict] = []
 
@@ -54,6 +87,7 @@ def collect_transcript_reports_for_product(
             print(f"[WARN] product_integrated_insight: video {vid} not found for product {product_id}")
             continue
 
+        # 1) transcript_report 캐시 확인
         report_row = query_one(
             "SELECT transcript_report FROM video_reports WHERE video_id = %s",
             (vid,),
@@ -61,16 +95,24 @@ def collect_transcript_reports_for_product(
         transcript_report = report_row.get("transcript_report") if report_row else None
 
         if not transcript_report:
+            # 2) transcript_text 캐시 확인
             transcript_row = query_one(
                 "SELECT transcript_text FROM video_transcripts WHERE video_id = %s",
                 (vid,),
             )
-            if not transcript_row or not transcript_row.get("transcript_text"):
-                print(f"[WARN] product_integrated_insight: no transcript for video {vid}, skipping")
-                continue
+            transcript_text = transcript_row.get("transcript_text") if transcript_row else None
 
+            # 3) 자막조차 없으면 YouTube에서 즉시 받아 저장
+            if not transcript_text:
+                print(f"[DEBUG] product_integrated_insight: fetching missing transcript for {vid}")
+                transcript_text = _fetch_and_save_transcript(vid)
+                if not transcript_text:
+                    print(f"[WARN] product_integrated_insight: transcript fetch failed for {vid}, skipping")
+                    continue
+
+            # 자막 → 자막 기반 보고서 생성 + 저장
             print(f"[DEBUG] product_integrated_insight: generating missing transcript_report for {vid}")
-            generated = build_transcript_report(transcript_row["transcript_text"])
+            generated = build_transcript_report(transcript_text)
             if not generated or generated.startswith("[ERROR]"):
                 print(f"[WARN] product_integrated_insight: failed to generate transcript_report for {vid}")
                 continue
