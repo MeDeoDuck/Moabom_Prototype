@@ -261,6 +261,79 @@
             .select-btn, .btn-primary { width: 100%; }
         }
 
+        /* ── Integrated insight section ──────────────────── */
+        .section-actions {
+            display: flex; align-items: center; justify-content: space-between;
+            gap: 12px; flex-wrap: wrap; margin-bottom: 14px;
+        }
+        .section-actions h2 { margin: 0; }
+        .integrated-insight-btn {
+            padding: 10px 18px;
+            background: var(--surface);
+            color: var(--primary-strong);
+            border: 1px solid var(--primary);
+            border-radius: 10px;
+            font-size: 14px; font-weight: 600;
+            font-family: inherit; cursor: pointer;
+            transition: background 0.15s, color 0.15s, box-shadow 0.15s, transform 0.1s;
+        }
+        .integrated-insight-btn:hover {
+            background: var(--primary-soft);
+            box-shadow: var(--shadow);
+            transform: translateY(-1px);
+        }
+        .integrated-insight-btn:disabled {
+            opacity: 0.55; cursor: not-allowed; transform: none; box-shadow: none;
+        }
+        .integrated-insight-msg {
+            font-size: 13px; color: var(--muted); margin-left: 4px;
+        }
+        .integrated-insight-panel {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 22px 24px;
+            box-shadow: var(--shadow);
+            margin-top: 16px;
+            display: none;
+        }
+        .integrated-insight-panel.show { display: block; }
+        .integrated-insight-panel h3 {
+            margin: 0 0 12px; font-size: 18px; font-weight: 700; letter-spacing: -0.01em;
+        }
+        .integrated-insight-meta {
+            font-size: 13px; color: var(--muted); margin-bottom: 12px;
+        }
+        .integrated-insight-body {
+            font-size: 14px; line-height: 1.65;
+        }
+        .integrated-insight-body h1 { font-size: 18px; margin: 18px 0 8px; font-weight: 700; }
+        .integrated-insight-body h2 { font-size: 16px; margin: 16px 0 8px; font-weight: 700; color: var(--primary-strong); }
+        .integrated-insight-body h3 { font-size: 14px; margin: 12px 0 6px; font-weight: 700; }
+        .integrated-insight-body table {
+            border-collapse: collapse; width: 100%; margin: 8px 0 14px;
+            font-size: 13px;
+        }
+        .integrated-insight-body th, .integrated-insight-body td {
+            border: 1px solid var(--border);
+            padding: 6px 10px; text-align: left;
+        }
+        .integrated-insight-body th { background: var(--primary-soft); color: var(--primary-strong); font-weight: 600; }
+        .integrated-insight-body ul { padding-left: 20px; }
+        .integrated-insight-body li { margin: 2px 0; }
+        .integrated-insight-actions {
+            display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px;
+            padding-top: 14px; border-top: 1px solid var(--border-soft);
+        }
+        .integrated-insight-spinner {
+            display: inline-flex; align-items: center; gap: 8px;
+            color: var(--primary-strong); font-size: 13px;
+        }
+        .integrated-insight-spinner .dot {
+            width: 8px; height: 8px; border-radius: 50%; background: var(--primary);
+            animation: vc-pulse 1.2s ease-in-out infinite;
+        }
+
         /* ── Selection progress overlay (Target #1) ────────── */
         .sel-overlay {
             position: fixed; inset: 0; z-index: 1000;
@@ -389,11 +462,26 @@
 
         <!-- Videos section -->
         <section class="section">
-            <h2>분석 영상 <span class="count">{{ videos|length }}</span></h2>
+            <div class="section-actions">
+                <h2>분석 영상 <span class="count">{{ videos|length }}</span></h2>
+                {% if videos and videos|length >= 2 %}
+                    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                        <button id="integratedInsightBtn"
+                                class="integrated-insight-btn"
+                                type="button"
+                                onclick="runIntegratedInsight()">
+                            🧩 종합 인사이트
+                        </button>
+                        <span id="integratedInsightStatus" class="integrated-insight-msg"></span>
+                    </div>
+                {% endif %}
+            </div>
             {% if videos %}
                 <div class="video-grid">
                     {% for video in videos %}
-                        <a class="video-card" href="/products/{{ product.product_id }}/videos/{{ video.video_id }}">
+                        <a class="video-card"
+                           href="/products/{{ product.product_id }}/videos/{{ video.video_id }}"
+                           data-video-id="{{ video.video_id }}">
                             <div class="thumb-wrap">
                                 {% if video.thumbnail_url %}
                                     <img src="{{ video.thumbnail_url }}" alt="thumbnail">
@@ -413,6 +501,21 @@
             {% else %}
                 <div class="empty">아직 분석된 영상이 없습니다. 위 "AI 영상 선택" 버튼을 눌러 시작하세요.</div>
             {% endif %}
+
+            <!-- Integrated insight result panel (hidden until generated) -->
+            <div id="integratedInsightPanel" class="integrated-insight-panel" aria-hidden="true">
+                <h3>🧩 제품 단위 종합 인사이트</h3>
+                <div id="integratedInsightMeta" class="integrated-insight-meta"></div>
+                <div id="integratedInsightBody" class="integrated-insight-body"></div>
+                <div class="integrated-insight-actions">
+                    <a id="integratedInsightPdfLink"
+                       class="btn-secondary"
+                       href="#"
+                       style="display:none;text-decoration:none;"
+                       target="_blank" rel="noopener">📄 PDF 다운로드</a>
+                    <button class="btn-secondary" type="button" onclick="closeIntegratedInsight()">닫기</button>
+                </div>
+            </div>
         </section>
     </div>
 
@@ -742,6 +845,89 @@
             return String(s).replace(/[&<>"']/g, c => ({
                 '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
             })[c]);
+        }
+
+        // ── Integrated insight (제품 단위 종합 인사이트) ───────────
+        function collectVideoIdsForIntegrated() {
+            const ids = [];
+            document.querySelectorAll('.video-card[data-video-id]').forEach(c => {
+                const v = c.getAttribute('data-video-id');
+                if (v) ids.push(v);
+            });
+            return ids;
+        }
+
+        async function runIntegratedInsight() {
+            const btn = document.getElementById('integratedInsightBtn');
+            const status = document.getElementById('integratedInsightStatus');
+            if (!btn) return;
+
+            const videoIds = collectVideoIdsForIntegrated();
+            if (videoIds.length < 2) {
+                status.textContent = '영상 2개 이상을 선택해 주세요';
+                return;
+            }
+
+            btn.disabled = true;
+            status.innerHTML = '<span class="integrated-insight-spinner"><span class="dot"></span>영상별 보고서 합성 중... (최대 1~2분)</span>';
+
+            try {
+                const response = await fetch('/products/' + PRODUCT_ID + '/integrated-insight', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ video_ids: videoIds }),
+                });
+
+                if (!response.ok) {
+                    const errText = await response.text().catch(() => '요청 실패');
+                    let detail = errText;
+                    try {
+                        const j = JSON.parse(errText);
+                        detail = j.detail || errText;
+                    } catch (_) {}
+                    status.textContent = '에러: ' + detail;
+                    return;
+                }
+
+                const result = await response.json();
+                renderIntegratedInsight(result);
+                status.textContent = '✓ 완료 (' + result.source_video_count + '개 영상 기반)';
+            } catch (e) {
+                status.textContent = '에러: ' + e;
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        function renderIntegratedInsight(result) {
+            const panel = document.getElementById('integratedInsightPanel');
+            const meta = document.getElementById('integratedInsightMeta');
+            const body = document.getElementById('integratedInsightBody');
+            const pdfLink = document.getElementById('integratedInsightPdfLink');
+
+            const modelLabel = result.model_used ? ('모델: ' + result.model_used) : '';
+            meta.textContent = '분석 영상 ' + result.source_video_count + '개 기반' +
+                               (modelLabel ? ' · ' + modelLabel : '');
+
+            // Server returns sanitized HTML via markdown_to_html — safe to inject.
+            body.innerHTML = result.report_html || ('<pre>' + escapeHtml(result.report_text || '') + '</pre>');
+
+            if (result.report_id) {
+                pdfLink.style.display = 'inline-block';
+                pdfLink.href = '/products/' + PRODUCT_ID + '/integrated-insight/' + result.report_id + '.pdf';
+            } else {
+                pdfLink.style.display = 'none';
+            }
+
+            panel.classList.add('show');
+            panel.setAttribute('aria-hidden', 'false');
+            panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        function closeIntegratedInsight() {
+            const panel = document.getElementById('integratedInsightPanel');
+            panel.classList.remove('show');
+            panel.setAttribute('aria-hidden', 'true');
         }
 
         // ── Video card click → inline progress bar + badge on the clicked card
