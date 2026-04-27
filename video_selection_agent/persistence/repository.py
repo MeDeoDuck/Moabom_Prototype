@@ -21,6 +21,7 @@ def save_selection(
     decision: SelectionDecision,
     all_scores: dict[str, dict] | None = None,
     candidate_lookup: dict[str, dict] | None = None,
+    reset_existing_videos: bool = False,
 ) -> None:
     """선정 결과를 3개 테이블에 기록.
 
@@ -28,10 +29,19 @@ def save_selection(
       finalize 후 scores 전체를 담아 호출.
     `candidate_lookup`: video_id → {title, channel_id, channel_name, subs, duration, ...}
       선정된 영상만 videos 테이블에 upsert할 때 사용.
+    `reset_existing_videos`: True면 같은 트랜잭션에서 해당 product의 기존 videos를 wipe.
+      FK CASCADE로 comments/transcripts/reports 등 자식 데이터도 함께 정리됨.
+      video_selection_runs/scores는 video_id FK가 없어 이력 보존.
     """
     conn = get_connection()
     try:
         cursor = conn.cursor()
+
+        if reset_existing_videos:
+            cursor.execute(
+                "DELETE FROM videos WHERE product_id = %s",
+                (decision.product_id,),
+            )
 
         cursor.execute(
             """

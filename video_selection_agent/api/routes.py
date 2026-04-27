@@ -264,7 +264,12 @@ def register_selection_routes(app: FastAPI) -> None:
             }
             for c in decision.candidates_preview
         }
-        save_selection(decision, all_scores=all_scores, candidate_lookup=candidate_lookup)
+        save_selection(
+            decision,
+            all_scores=all_scores,
+            candidate_lookup=candidate_lookup,
+            reset_existing_videos=request.process_comments,
+        )
 
         if request.process_comments:
             _process_comments_for_videos(
