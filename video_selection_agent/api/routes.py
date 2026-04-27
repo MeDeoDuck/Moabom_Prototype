@@ -169,6 +169,36 @@ def _process_comments_for_videos(product_name: str, video_ids: Iterable[str]) ->
 
 
 def _decision_to_response(decision: Any) -> dict:
+    score_lookup = getattr(decision, "all_scores", {}) or {}
+
+    def _candidate_payload(c: Any) -> dict:
+        base = {
+            "video_id": c.video_id,
+            "title": c.title,
+            "channel_name": c.channel_name,
+        }
+        sb = score_lookup.get(c.video_id)
+        if sb is not None:
+            base.update({
+                "final_score": sb.final_score,
+                "tier": sb.tier,
+                "rank": sb.rank,
+                "dimensions": sb.dimensions,
+                "weighted_contributions": sb.weighted_contributions,
+                "rationale_short": sb.llm_rationale_short,
+            })
+        return base
+
+    candidates_sorted = sorted(
+        decision.candidates_preview,
+        key=lambda c: (
+            score_lookup[c.video_id].final_score
+            if c.video_id in score_lookup
+            else float("-inf")
+        ),
+        reverse=True,
+    )
+
     return {
         "run_id": str(decision.run_id),
         "mode": decision.mode,
@@ -188,14 +218,7 @@ def _decision_to_response(decision: Any) -> dict:
             }
             for v in decision.selected
         ],
-        "candidates_preview": [
-            {
-                "video_id": c.video_id,
-                "title": c.title,
-                "channel_name": c.channel_name,
-            }
-            for c in decision.candidates_preview
-        ],
+        "candidates_preview": [_candidate_payload(c) for c in candidates_sorted],
         "diversity_report": {
             "channels_unique": decision.diversity_report.channels_unique,
             "tier_distribution": decision.diversity_report.tier_distribution,

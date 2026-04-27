@@ -588,7 +588,7 @@
             const d = result.diversity_report || {};
             const tiers = d.tier_distribution || {};
             const tierStr = Object.entries(tiers).map(([k, v]) => tierLabel(k) + ':' + v).join(', ');
-            return `고유 채널 ${d.channels_unique || 0}개, 티어 분포 [${tierStr}], 모델 ${result.model_used}, 정책 ${result.policy_version}`;
+            return `고유 채널 ${d.channels_unique || 0}개, 티어 분포 [${tierStr}]`;
         }
 
         function renderCandidateCheckboxes(result, k) {
@@ -596,13 +596,20 @@
             const selectedSet = new Set((result.selected || []).map(v => v.video_id));
             const listHtml = items.map(c => {
                 const checked = selectedSet.has(c.video_id) ? 'checked' : '';
+                const hasScore = typeof c.final_score === 'number';
+                const tierBadge = c.tier ? `<span class="tier-badge tier-${c.tier}">${tierLabel(c.tier)}</span>` : '';
+                const scoreText = hasScore ? ` · score ${c.final_score.toFixed(3)}` : '';
+                const detailBtn = hasScore
+                    ? `<button class="why-btn" type="button" onclick='event.preventDefault(); event.stopPropagation(); showWhy(${JSON.stringify(c.video_id)})'>점수 상세</button>`
+                    : '';
                 return `
                     <label class="candidate-item">
                         <input type="checkbox" class="cand-chk" value="${c.video_id}" ${checked}>
                         <div class="info">
                             <div class="t">${escapeHtml(c.title)}</div>
-                            <div class="c">${escapeHtml(c.channel_name)}</div>
+                            <div class="c">${escapeHtml(c.channel_name)} ${tierBadge}${scoreText}</div>
                         </div>
+                        ${detailBtn}
                     </label>
                 `;
             }).join('');
@@ -689,10 +696,14 @@
 
         function showWhy(videoId) {
             if (!lastSelection) return;
-            const v = lastSelection.selected.find(x => x.video_id === videoId);
+            const selectedHit = (lastSelection.selected || []).find(x => x.video_id === videoId);
+            const v = selectedHit
+                || (lastSelection.candidates_preview || []).find(x => x.video_id === videoId);
             if (!v) return;
+            const isSelected = !!selectedHit;
 
-            document.getElementById('whyModalTitle').textContent = '왜 선택됨? — ' + v.title;
+            document.getElementById('whyModalTitle').textContent =
+                (isSelected ? '왜 선택됨? — ' : 'AI 점수 — ') + v.title;
 
             const dims = v.dimensions || {};
             const contribs = v.weighted_contributions || {};
@@ -717,18 +728,31 @@
                 `;
             }
 
+            const reasonsHtml = (v.selection_reasons || []).length
+                ? `<h3 style="margin: 18px 0 8px; font-size: 14px; color: var(--muted); font-weight: 600;">선정 이유</h3>
+                   <div>${v.selection_reasons.map(r => '<span class="reason-chip">' + escapeHtml(r) + '</span>').join('')}</div>`
+                : '';
+            const hasRationale = (v.rationale_short && v.rationale_short.trim())
+                || (v.rationale_full && v.rationale_full.trim());
+            const rationaleHtml = hasRationale
+                ? `<h3 style="margin: 18px 0 8px; font-size: 14px; color: var(--muted); font-weight: 600;">AI 평가</h3>
+                   ${v.rationale_short ? `<div class="rationale-full-box"><strong>요약:</strong> ${escapeHtml(v.rationale_short)}</div>` : ''}
+                   ${v.rationale_full ? `<div class="rationale-full-box">${escapeHtml(v.rationale_full)}</div>` : ''}`
+                : '';
+            const rankNote = (!isSelected && typeof v.rank === 'number' && v.rank === 0)
+                ? `<p style="margin: 6px 0 0; color: var(--muted); font-size: 12px;">※ 다양성 필터에서 제외된 후보입니다 (LLM 주제 적합성 점수 미반영).</p>`
+                : '';
+
             document.getElementById('whyBody').innerHTML = `
                 <p style="margin: 0 0 14px;"><strong>채널:</strong> ${escapeHtml(v.channel_name)}
                    <span class="tier-badge tier-${v.tier}">${tierLabel(v.tier)}</span>
                    · <strong>최종 점수:</strong> ${v.final_score.toFixed(3)}
                 </p>
+                ${rankNote}
                 <h3 style="margin: 14px 0 8px; font-size: 14px; color: var(--muted); font-weight: 600;">점수 차원 (0~1)</h3>
                 ${barsHtml}
-                <h3 style="margin: 18px 0 8px; font-size: 14px; color: var(--muted); font-weight: 600;">선정 이유</h3>
-                <div>${(v.selection_reasons || []).map(r => '<span class="reason-chip">' + r + '</span>').join('')}</div>
-                <h3 style="margin: 18px 0 8px; font-size: 14px; color: var(--muted); font-weight: 600;">AI 평가</h3>
-                <div class="rationale-full-box"><strong>요약:</strong> ${escapeHtml(v.rationale_short || '(없음)')}</div>
-                <div class="rationale-full-box">${escapeHtml(v.rationale_full || '(없음)')}</div>
+                ${reasonsHtml}
+                ${rationaleHtml}
             `;
             document.getElementById('whyModal').classList.add('show');
         }
