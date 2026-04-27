@@ -261,19 +261,16 @@
             .select-btn, .btn-primary { width: 100%; }
         }
 
-        /* ── Integrated insight section ──────────────────── */
-        .section-actions {
-            display: flex; align-items: center; justify-content: space-between;
-            gap: 12px; flex-wrap: wrap; margin-bottom: 14px;
-        }
-        .section-actions h2 { margin: 0; }
+        /* ── Integrated insight (제품 단위 보고서) ─────────── */
         .integrated-insight-btn {
-            padding: 10px 18px;
+            /* Same height/padding/font as .select-btn so 1차/2차 액션이 같은 라인에서 자연스럽게 보임.
+               1차(AI 영상 선택)는 그라데이션 채움, 2차(종합 인사이트)는 아웃라인. */
+            padding: 12px 22px;
             background: var(--surface);
             color: var(--primary-strong);
             border: 1px solid var(--primary);
-            border-radius: 10px;
-            font-size: 14px; font-weight: 600;
+            border-radius: 12px;
+            font-size: 15px; font-weight: 600;
             font-family: inherit; cursor: pointer;
             transition: background 0.15s, color 0.15s, box-shadow 0.15s, transform 0.1s;
         }
@@ -286,7 +283,8 @@
             opacity: 0.55; cursor: not-allowed; transform: none; box-shadow: none;
         }
         .integrated-insight-msg {
-            font-size: 13px; color: var(--muted); margin-left: 4px;
+            font-size: 14px; color: var(--muted);
+            min-height: 20px;
         }
         .integrated-insight-panel {
             background: var(--surface);
@@ -333,6 +331,26 @@
             width: 8px; height: 8px; border-radius: 50%; background: var(--primary);
             animation: vc-pulse 1.2s ease-in-out infinite;
         }
+
+        /* ── Integrated insight progress overlay ─────────── */
+        .pir-progress-bar {
+            margin: 18px 0 8px;
+            width: 100%; height: 10px;
+            background: var(--border-soft);
+            border-radius: 999px;
+            overflow: hidden;
+        }
+        .pir-progress-fill {
+            width: 0%; height: 100%;
+            background: linear-gradient(90deg, var(--primary), var(--accent));
+            transition: width 0.4s ease;
+        }
+        .pir-progress-meta {
+            display: flex; justify-content: space-between;
+            font-size: 12px; color: var(--muted);
+            margin-bottom: 14px; font-variant-numeric: tabular-nums;
+        }
+        .pir-progress-meta strong { color: var(--text); font-weight: 600; }
 
         /* ── Selection progress overlay (Target #1) ────────── */
         .sel-overlay {
@@ -434,10 +452,19 @@
 
             <div class="actions-row">
                 <button class="select-btn" onclick="toggleSelectConfig()" id="selectToggleBtn">🎯 AI 영상 선택</button>
+                {% if videos and videos|length >= 2 %}
+                    <button id="integratedInsightBtn"
+                            class="integrated-insight-btn"
+                            type="button"
+                            onclick="runIntegratedInsight()">
+                        🧩 종합 인사이트
+                    </button>
+                {% endif %}
                 <div id="syncProgress" class="sync-progress" aria-hidden="true">
                     <div id="syncProgressFill" class="sync-progress-fill"></div>
                 </div>
                 <span id="syncStatus" class="sync-status"></span>
+                <span id="integratedInsightStatus" class="integrated-insight-msg"></span>
             </div>
 
             <div id="selectConfig" class="select-config">
@@ -462,20 +489,7 @@
 
         <!-- Videos section -->
         <section class="section">
-            <div class="section-actions">
-                <h2>분석 영상 <span class="count">{{ videos|length }}</span></h2>
-                {% if videos and videos|length >= 2 %}
-                    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-                        <button id="integratedInsightBtn"
-                                class="integrated-insight-btn"
-                                type="button"
-                                onclick="runIntegratedInsight()">
-                            🧩 종합 인사이트
-                        </button>
-                        <span id="integratedInsightStatus" class="integrated-insight-msg"></span>
-                    </div>
-                {% endif %}
-            </div>
+            <h2>분석 영상 <span class="count">{{ videos|length }}</span></h2>
             {% if videos %}
                 <div class="video-grid">
                     {% for video in videos %}
@@ -528,6 +542,22 @@
             <div class="sel-step" data-step="1"><span class="icon">1</span><span>YouTube 후보 영상 수집</span></div>
             <div class="sel-step" data-step="2"><span class="icon">2</span><span>AI 영상 선정 + 다양성 평가</span></div>
             <div class="sel-step" data-step="3"><span class="icon">3</span><span>댓글 수집 및 감성 분석</span></div>
+        </div>
+    </div>
+
+    <!-- Integrated insight progress overlay -->
+    <div id="pirOverlay" class="sel-overlay" aria-hidden="true">
+        <div class="sel-overlay-card">
+            <div class="sel-spinner"></div>
+            <h3>🧩 종합 인사이트 보고서 생성 중</h3>
+            <div class="sub" id="pirOverlaySub">예상 소요시간: 약 1~2분. 창을 닫지 마세요.</div>
+            <div class="pir-progress-bar"><div id="pirProgressFill" class="pir-progress-fill"></div></div>
+            <div class="pir-progress-meta">
+                <span><strong id="pirProgressPercent">0%</strong></span>
+                <span>남은 시간 약 <strong id="pirProgressRemain">--</strong>초</span>
+            </div>
+            <div class="sel-step" data-pir-step="1"><span class="icon">1</span><span>영상별 자막 보고서 점검 및 보완</span></div>
+            <div class="sel-step" data-pir-step="2"><span class="icon">2</span><span>9섹션 통합 인사이트 보고서 합성</span></div>
         </div>
     </div>
 
@@ -857,6 +887,88 @@
             return ids;
         }
 
+        // ── Progress overlay state ───────────────────────────
+        let pirProgressTimer = null;
+        let pirStepTimers = [];
+
+        function pirStartProgress(estimatedMs, videoCount) {
+            const overlay = document.getElementById('pirOverlay');
+            const fill = document.getElementById('pirProgressFill');
+            const pct = document.getElementById('pirProgressPercent');
+            const remain = document.getElementById('pirProgressRemain');
+            const sub = document.getElementById('pirOverlaySub');
+
+            sub.textContent = '예상 소요시간: 약 ' + Math.ceil(estimatedMs / 60000) +
+                              '분 (' + videoCount + '개 영상 기반). 창을 닫지 마세요.';
+
+            // Reset steps
+            const steps = overlay.querySelectorAll('.sel-step[data-pir-step]');
+            steps.forEach(s => {
+                s.classList.remove('active', 'done');
+                s.querySelector('.icon').textContent = s.dataset.pirStep;
+            });
+
+            overlay.classList.add('show');
+            overlay.setAttribute('aria-hidden', 'false');
+
+            // Step transitions: step 1 = 0~40% of time, step 2 = 40~100%
+            pirStepTimers.forEach(clearTimeout);
+            pirStepTimers = [];
+            pirActivateStep(steps[0]);
+            pirStepTimers.push(setTimeout(() => {
+                pirCompleteStep(steps[0]);
+                pirActivateStep(steps[1]);
+            }, estimatedMs * 0.4));
+
+            // Progress bar fills 0% → 95% over estimatedMs (snaps to 100% on completion)
+            const startTime = Date.now();
+            if (pirProgressTimer) clearInterval(pirProgressTimer);
+            pirProgressTimer = setInterval(() => {
+                const elapsed = Date.now() - startTime;
+                const ratio = Math.min(elapsed / estimatedMs, 0.95);
+                const percent = Math.floor(ratio * 100);
+                fill.style.width = percent + '%';
+                pct.textContent = percent + '%';
+                const left = Math.max(0, Math.ceil((estimatedMs - elapsed) / 1000));
+                remain.textContent = left;
+            }, 200);
+        }
+
+        function pirActivateStep(el) {
+            if (!el) return;
+            el.classList.add('active');
+            el.querySelector('.icon').innerHTML = '<span class="icon-spin"></span>';
+        }
+        function pirCompleteStep(el) {
+            if (!el) return;
+            el.classList.remove('active');
+            el.classList.add('done');
+            el.querySelector('.icon').textContent = '✓';
+        }
+        function pirFinishProgress() {
+            if (pirProgressTimer) { clearInterval(pirProgressTimer); pirProgressTimer = null; }
+            pirStepTimers.forEach(clearTimeout); pirStepTimers = [];
+
+            const fill = document.getElementById('pirProgressFill');
+            const pct = document.getElementById('pirProgressPercent');
+            const remain = document.getElementById('pirProgressRemain');
+            const overlay = document.getElementById('pirOverlay');
+
+            fill.style.width = '100%';
+            pct.textContent = '100%';
+            remain.textContent = '0';
+            overlay.querySelectorAll('.sel-step[data-pir-step]').forEach(pirCompleteStep);
+
+            // Brief moment so user sees 100% before close
+            setTimeout(() => {
+                overlay.classList.remove('show');
+                overlay.setAttribute('aria-hidden', 'true');
+                // Reset for next run
+                fill.style.width = '0%';
+                pct.textContent = '0%';
+            }, 500);
+        }
+
         async function runIntegratedInsight() {
             const btn = document.getElementById('integratedInsightBtn');
             const status = document.getElementById('integratedInsightStatus');
@@ -869,7 +981,12 @@
             }
 
             btn.disabled = true;
-            status.innerHTML = '<span class="integrated-insight-spinner"><span class="dot"></span>영상별 보고서 합성 중... (최대 1~2분)</span>';
+            status.textContent = '';
+
+            // Estimate: base 30s for synthesis + 12s per video for transcript-report top-up.
+            // Floor at 60s, ceil at 180s.
+            const estimatedMs = Math.min(180000, Math.max(60000, 30000 + videoIds.length * 12000));
+            pirStartProgress(estimatedMs, videoIds.length);
 
             try {
                 const response = await fetch('/products/' + PRODUCT_ID + '/integrated-insight', {
@@ -896,6 +1013,7 @@
                 status.textContent = '에러: ' + e;
             } finally {
                 btn.disabled = false;
+                pirFinishProgress();
             }
         }
 
