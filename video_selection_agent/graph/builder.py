@@ -15,6 +15,7 @@ from video_selection_agent.graph.nodes import (
     diversity_filter,
     enrich_metadata,
     fetch_candidates,
+    filter_captioned_videos,
     finalize_selection,
     generate_rationale,
     llm_rerank,
@@ -73,6 +74,7 @@ def build_graph() -> Any:
     graph = StateGraph(SelectionState)
     graph.add_node("fetch_candidates", fetch_candidates)
     graph.add_node("enrich_metadata", enrich_metadata)
+    graph.add_node("filter_captioned_videos", filter_captioned_videos)
     graph.add_node("score_quantitative", score_quantitative)
     graph.add_node("diversity_filter", diversity_filter)
     graph.add_node("relax_constraints", relax_constraints)
@@ -86,7 +88,8 @@ def build_graph() -> Any:
         _route_after_fetch,
         {"end": END, "enrich": "enrich_metadata"},
     )
-    graph.add_edge("enrich_metadata", "score_quantitative")
+    graph.add_edge("enrich_metadata", "filter_captioned_videos")
+    graph.add_edge("filter_captioned_videos", "score_quantitative")
     graph.add_edge("score_quantitative", "diversity_filter")
     graph.add_conditional_edges(
         "diversity_filter",
@@ -113,6 +116,7 @@ class _FallbackLinearGraph:
             return state
 
         state = enrich_metadata(state)  # type: ignore[assignment]
+        state = filter_captioned_videos(state)  # type: ignore[assignment]
         state = score_quantitative(state)  # type: ignore[assignment]
         state = diversity_filter(state)  # type: ignore[assignment]
 
