@@ -124,45 +124,40 @@ def generate_and_save_all_reports(video_id: str, product_name: str, force_rewrit
     
     print(f"[REPORT] START: video_id={video_id}, product={product_name}, force_rewrite={force_rewrite}")
     
-    # Cache hit only when ALL three reports are present. Otherwise a row with
-    # transcript_report only (saved before the comment pipeline ran) would be
-    # served forever, hiding the comment/integrated reports even after comments
-    # become available on a later visit.
+    # Cache hit when at least the comment report exists. The transcript and
+    # integrated reports may legitimately be None for videos whose uploader
+    # disabled captions — that's a stable terminal state, not a partial save.
     if not force_rewrite:
         existing_reports = query_one(
             """SELECT transcript_report, comment_report, integrated_report, updated_at
                FROM video_reports WHERE video_id = %s""",
             (video_id,)
         )
-        if existing_reports and (
-            existing_reports.get("transcript_report")
-            and existing_reports.get("comment_report")
-            and existing_reports.get("integrated_report")
-        ):
+        if existing_reports and existing_reports.get("comment_report"):
             print(f"[REPORT] Using cached reports (updated: {existing_reports.get('updated_at')})")
             return (
                 existing_reports.get("transcript_report"),
                 existing_reports.get("comment_report"),
                 existing_reports.get("integrated_report"),
             )
-    
+
     print(f"[REPORT] Generating fresh reports...")
     try:
-        # Get transcript
+        # Transcript is optional — videos with captions disabled still get a
+        # comment-only report instead of being skipped entirely.
         transcript_row = query_one(
             "SELECT transcript_text FROM video_transcripts WHERE video_id = %s",
             (video_id,),
         )
-        if not transcript_row:
-            print(f"[REPORT] No transcript found")
-            return None, None, None
-        
-        # Generate and save transcript report
-        print(f"[REPORT] Generating transcript report...")
-        transcript_report = build_transcript_report(transcript_row["transcript_text"])
-        print(f"[REPORT] Transcript report length: {len(transcript_report) if transcript_report else 0}")
-        
-        # Generate and save comment report
+        transcript_report = None
+        if transcript_row:
+            print(f"[REPORT] Generating transcript report...")
+            transcript_report = build_transcript_report(transcript_row["transcript_text"])
+            print(f"[REPORT] Transcript report length: {len(transcript_report) if transcript_report else 0}")
+        else:
+            print(f"[REPORT] No transcript — building comment-only report")
+
+        # Comment report runs regardless of transcript availability
         print(f"[REPORT] Generating comment sentiment report...")
         comment_report = build_comment_sentiment_report(video_id, product_name)
         print(f"[REPORT] Comment report length: {len(comment_report) if comment_report else 0}")
