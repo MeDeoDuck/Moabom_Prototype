@@ -54,6 +54,8 @@ tmp/
 *.tmp
 
 
-CLAUDE.md
-docs\요구사항명세서_모아봄_v5.pdf
-docs\인공지능종합설계_과제기획서_모아봄.pdf
+# Personal Claude notes (team-shared guide is CLAUDE.md, tracked)
+CLAUDE.local.md
+
+# Windows download metadata (created by WSL/Windows file copy)
+*:Zone.Identifier
