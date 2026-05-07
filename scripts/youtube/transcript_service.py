@@ -5,7 +5,8 @@ from typing import Optional, Dict, Any
 import time
 import json
 import yt_dlp
-import requests
+
+from scripts.youtube.cookies import apply_to_ytdlp_opts, make_session
 
 
 def fetch_video_transcript(video_id: str) -> Optional[Dict[str, Any]]:
@@ -44,6 +45,8 @@ def fetch_video_transcript(video_id: str) -> Optional[Dict[str, Any]]:
                 text_parts.append(line)
         return " ".join(text_parts).strip() if text_parts else None
     
+    session = make_session()
+
     def fetch_with_backoff(url: str, max_retries: int = 3) -> Optional[str]:
         """
         Fetch URL with exponential backoff on 429.
@@ -51,7 +54,7 @@ def fetch_video_transcript(video_id: str) -> Optional[Dict[str, Any]]:
         """
         for attempt in range(max_retries):
             try:
-                response = requests.get(url, timeout=30)
+                response = session.get(url, timeout=30)
                 
                 if response.status_code == 429:
                     wait_time = 2 ** attempt
@@ -82,16 +85,19 @@ def fetch_video_transcript(video_id: str) -> Optional[Dict[str, Any]]:
     try:
         url = f"https://www.youtube.com/watch?v={video_id}"
         
-        # Extract caption URLs with yt-dlp (metadata only)
-        ydl_opts = {
+        # Extract caption URLs with yt-dlp (metadata only).
+        # process=False avoids the format/n-challenge pipeline that throws
+        # "No video formats found" under cookie auth (yt-dlp wiki: PO Token).
+        ydl_opts: Dict[str, Any] = {
             'quiet': True,
             'no_warnings': True,
             'skip_download': True,
         }
-        
+        apply_to_ytdlp_opts(ydl_opts)
+
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             print(f"[TRANSCRIPT] Extracting metadata from {url}")
-            info = ydl.extract_info(url, download=False)
+            info = ydl.extract_info(url, download=False, process=False)
             
             subtitles_data = info.get('automatic_captions') or info.get('subtitles') or {}
             print(f"[TRANSCRIPT] Available languages: {list(subtitles_data.keys())}")
