@@ -178,7 +178,7 @@ def probe_ytdlp(video_id: str) -> dict[str, Any]:
             ydl_opts["cookiefile"] = cookie_path
         t0 = time.time()
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
+            info = ydl.extract_info(url, download=False, process=False)
         out["elapsed_ms"] = int((time.time() - t0) * 1000)
         auto = info.get("automatic_captions") or {}
         manual = info.get("subtitles") or {}
@@ -248,7 +248,7 @@ def probe_caption_fetch_full(video_id: str) -> dict[str, Any]:
         if cookie_path:
             ydl_opts["cookiefile"] = cookie_path
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
+            info = ydl.extract_info(url, download=False, process=False)
         subs = info.get("automatic_captions") or info.get("subtitles") or {}
         chosen = None
         for lang in ("ko", "en"):
