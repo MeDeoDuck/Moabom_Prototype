@@ -59,3 +59,8 @@ CLAUDE.local.md
 
 # Windows download metadata (created by WSL/Windows file copy)
 *:Zone.Identifier
+
+# Secrets — cookies, tokens, anything that must not leave the local machine.
+# README is allow-listed so the directory's purpose stays documented in git.
+.secrets/*
+!.secrets/README.md
