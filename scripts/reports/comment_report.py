@@ -1,5 +1,5 @@
 """
-Comment sentiment report generation service (Azure OpenAI / GPT-4.1-mini)
+Comment sentiment report generation service (RunYourAI / openai/gpt-4.1-2025-04-14)
 """
 from typing import Optional
 import psycopg2

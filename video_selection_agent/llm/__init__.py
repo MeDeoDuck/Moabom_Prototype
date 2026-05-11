@@ -1,1 +1,1 @@
-"""LLM 연동 (Azure OpenAI GPT-4.1-mini primary)."""
+"""LLM 연동 (RunYourAI primary, 기본 openai/gpt-4.1)."""

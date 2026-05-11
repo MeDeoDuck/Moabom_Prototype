@@ -1,5 +1,5 @@
 """
-제품 단위 통합 인사이트 보고서 (Azure OpenAI / GPT-4.1-mini)
+제품 단위 통합 인사이트 보고서 (RunYourAI / openai/gpt-4.1-2025-04-14)
 
 입력: 동일 제품에 대한 N개 영상의 자막 기반 보고서(video_reports.transcript_report).
 출력: 영상별 보고서들만을 근거로 합성한 9섹션 통합 인사이트 보고서.
@@ -217,7 +217,7 @@ def build_product_integrated_insight_report(
 ) -> Tuple[str, str]:
     """
     9섹션 통합 인사이트 보고서를 생성한다.
-    Azure OpenAI 우선 사용, 미설정/실패 시 heuristic fallback.
+    RunYourAI 우선 사용, 미설정/실패 시 heuristic fallback.
 
     반환: (report_text, model_used)
     """

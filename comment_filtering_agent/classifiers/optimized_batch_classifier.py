@@ -451,7 +451,7 @@ class AsyncOptimizedBatchClassifier:
         if not LANGCHAIN_AZURE_AVAILABLE:
             raise ImportError("Install langchain-openai: pip install langchain-openai")
         if not _AZURE_ENDPOINT or not _AZURE_API_KEY:
-            raise ValueError("Azure OpenAI not configured")
+            raise ValueError("RunYourAI not configured")
 
         self.api_key = _AZURE_API_KEY
         self.batch_size = batch_size

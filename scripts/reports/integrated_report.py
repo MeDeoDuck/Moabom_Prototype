@@ -1,5 +1,5 @@
 """
-Integrated analysis report generation service (Azure OpenAI / GPT-4.1-mini)
+Integrated analysis report generation service (RunYourAI / openai/gpt-4.1-2025-04-14)
 Compares reviewer (transcript) vs consumer (comments) opinions
 """
 from typing import Optional
@@ -14,7 +14,7 @@ from scripts.reports.transcript_report import (
 def build_integrated_analysis_report(video_id: str, product_name: str, transcript_report: str, comment_sentiment_report: str) -> Optional[str]:
     """
     통합 분석: 리뷰어(자막) + 사람들의 반응(댓글) 비교
-    Azure OpenAI (GPT-4.1-mini) 로 의견 유사도 계산
+    RunYourAI (openai/gpt-4.1-2025-04-14) 로 의견 유사도 계산
     """
     if not transcript_report or not comment_sentiment_report:
         print(f"[DEBUG] build_integrated_analysis_report: Missing reports - transcript: {bool(transcript_report)}, comment: {bool(comment_sentiment_report)}")
@@ -28,7 +28,7 @@ def build_integrated_analysis_report(video_id: str, product_name: str, transcrip
         return error_msg
 
     try:
-        print(f"[DEBUG] build_integrated_analysis_report: Starting Azure OpenAI call for {product_name}")
+        print(f"[DEBUG] build_integrated_analysis_report: Starting RunYourAI call for {product_name}")
         integration_prompt = f"""
 당신은 시장 분석 전문가입니다. 다음 두 분석을 비교하여 통합 보고서를 작성해주세요.
 
@@ -78,7 +78,7 @@ def build_integrated_analysis_report(video_id: str, product_name: str, transcrip
 보고서를 작성해주세요.
 """
 
-        print(f"[DEBUG] Sending request to Azure OpenAI ({REPORT_LLM_DEPLOYMENT})...")
+        print(f"[DEBUG] Sending request to RunYourAI ({REPORT_LLM_DEPLOYMENT})...")
         max_attempts = 3
         for attempt in range(max_attempts):
             retry_prompt = (
