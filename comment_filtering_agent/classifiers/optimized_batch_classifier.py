@@ -16,14 +16,13 @@ from dataclasses import dataclass
 from datetime import datetime
 import os
 
-# Azure OpenAI 설정 (.env 에서 로드, scripts.config 와 동일한 환경변수)
-_AZURE_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT", "")
-_AZURE_API_KEY = os.getenv("AZURE_OPENAI_API_KEY", "")
-_AZURE_DEPLOYMENT = os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4.1-mini")
-_AZURE_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION", "2025-01-01-preview")
+# RunYourAI 설정 (.env 에서 로드, scripts.config 와 동일한 환경변수)
+_RUNYOURAI_API_KEY = os.getenv("RUNYOURAI_API_KEY", "")
+_RUNYOURAI_BASE_URL = os.getenv("RUNYOURAI_BASE_URL", "https://api.runyour.ai/v1")
+_RUNYOURAI_MODEL = os.getenv("RUNYOURAI_MODEL", "openai/gpt-4.1")
 
 try:
-    from langchain_openai import AzureChatOpenAI
+    from langchain_openai import ChatOpenAI
     from langchain_core.prompts import ChatPromptTemplate
     from langchain_core.messages import SystemMessage
     from langchain_core.output_parsers import JsonOutputParser
@@ -199,29 +198,28 @@ class OptimizedBatchClassifier:
         """
         if not LANGCHAIN_AZURE_AVAILABLE:
             raise ImportError("Install langchain-openai: pip install langchain-openai")
-        if not _AZURE_ENDPOINT or not _AZURE_API_KEY:
+        if not _RUNYOURAI_API_KEY:
             raise ValueError(
-                "Azure OpenAI 가 구성되지 않았습니다. "
-                "AZURE_OPENAI_ENDPOINT / AZURE_OPENAI_API_KEY 환경변수를 확인하세요."
+                "RUNYOURAI_API_KEY 환경변수가 설정되지 않았습니다. "
+                ".env 또는 Container App secret(runyourai-key)을 확인하세요."
             )
 
-        self.api_key = _AZURE_API_KEY
+        self.api_key = _RUNYOURAI_API_KEY
         self.batch_size = batch_size
         self.confidence_threshold = confidence_threshold
         self.prompt_version = prompt_version
         self.max_concurrent = max_concurrent
         self.cache = ClassificationCache()
 
-        self.model = _AZURE_DEPLOYMENT
+        self.model = _RUNYOURAI_MODEL
         self.max_retries = 3
         self.timeout = 30
 
         # LangChain chain: SystemMessage로 직접 삽입해 COMPACT_SYSTEM_PROMPT 내 {} 이스케이프 불필요
-        llm = AzureChatOpenAI(
-            azure_endpoint=_AZURE_ENDPOINT,
-            api_key=_AZURE_API_KEY,
-            api_version=_AZURE_API_VERSION,
-            azure_deployment=_AZURE_DEPLOYMENT,
+        llm = ChatOpenAI(
+            api_key=_RUNYOURAI_API_KEY,
+            base_url=_RUNYOURAI_BASE_URL,
+            model=_RUNYOURAI_MODEL,
             temperature=0.1,
             max_tokens=5000,
             timeout=self.timeout,

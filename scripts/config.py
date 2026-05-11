@@ -4,7 +4,6 @@ Config module - Environment variables and settings
 import os
 from dotenv import load_dotenv
 
-# Load environment variables
 load_dotenv()
 
 # Database
@@ -14,11 +13,11 @@ DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localho
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY", "")
 HF_TOKEN = os.getenv("HF_TOKEN", "")
 
-# Azure OpenAI — 보고서 3종(transcript / comment / integrated) + 댓글 분류 / 감성 분석
-AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT", "")
-AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY", "")
-AZURE_OPENAI_DEPLOYMENT = os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4.1-mini")
-AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION", "2025-01-01-preview")
+# RunYourAI — 통합 LLM provider (OpenAI / Claude / Gemini 단일 키).
+# 모델 형식: "openai/gpt-4.1", "claude/claude-haiku-4-5", "gemini/gemini-2.5-flash" 등.
+RUNYOURAI_API_KEY = os.getenv("RUNYOURAI_API_KEY", "")
+RUNYOURAI_BASE_URL = os.getenv("RUNYOURAI_BASE_URL", "https://api.runyour.ai/v1")
+RUNYOURAI_MODEL = os.getenv("RUNYOURAI_MODEL", "openai/gpt-4.1-2025-04-14")
 
 # Server
 PORT = int(os.getenv("PORT", 8000))

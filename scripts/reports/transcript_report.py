@@ -1,23 +1,22 @@
 """
-자막 기반 제품 핵심 인사이트 보고서 생성 (Azure OpenAI / GPT-4.1-mini)
+자막 기반 제품 핵심 인사이트 보고서 생성 (RunYourAI 통합 — 기본 openai/gpt-4.1)
 
-- v1 프롬프트(구매 결정 애널리스트 페르소나 + few-shot 2종) Azure OpenAI 이식판
+- v1 프롬프트(구매 결정 애널리스트 페르소나 + few-shot 2종)
 - 자막이 매우 길 경우(150,000자 초과) 청킹 후 청크별 중간 요약 → 최종 보고서로 합성
 - get_report_llm_client / REPORT_LLM_DEPLOYMENT / fix_encoding / _extract_validated_report:
   comment_report.py / integrated_report.py 가 동일 클라이언트와 검증 헬퍼를 재사용하도록 export
 """
 import re
-from openai import AzureOpenAI
+from openai import OpenAI
 
 from scripts.config import (
-    AZURE_OPENAI_API_KEY,
-    AZURE_OPENAI_API_VERSION,
-    AZURE_OPENAI_DEPLOYMENT,
-    AZURE_OPENAI_ENDPOINT,
+    RUNYOURAI_API_KEY,
+    RUNYOURAI_BASE_URL,
+    RUNYOURAI_MODEL,
 )
 
 # ── 청킹 기준 ──────────────────────────────────────────────────
-# GPT-4.1-mini 128K 컨텍스트 기준
+# GPT-4.1 128K 컨텍스트 기준
 CHUNK_THRESHOLD = 150_000
 CHUNK_SIZE = 100_000
 CHUNK_OVERLAP = 3_000
@@ -25,31 +24,30 @@ CHUNK_OVERLAP = 3_000
 # ── 검증 파라미터 (comment_report / integrated_report 가 사용) ──
 VALIDATION_MAX_CHARS = 1500
 
-# 보고서가 사용하는 Azure 배포 이름 (모듈 표면에 export)
-REPORT_LLM_DEPLOYMENT = AZURE_OPENAI_DEPLOYMENT
+# 보고서가 사용하는 모델 이름 (모듈 표면에 export — 이름은 하위 호환)
+REPORT_LLM_DEPLOYMENT = RUNYOURAI_MODEL
 
 # ── LLM 클라이언트 ──────────────────────────────────────────────
 _client = None
 
 
-def get_report_llm_client() -> AzureOpenAI:
-    """보고서 3종이 공유하는 Azure OpenAI lazy 싱글턴."""
+def get_report_llm_client() -> OpenAI:
+    """보고서 3종이 공유하는 OpenAI-호환 (RunYourAI) lazy 싱글턴."""
     global _client
     if _client is None:
-        if not AZURE_OPENAI_ENDPOINT or not AZURE_OPENAI_API_KEY:
+        if not RUNYOURAI_API_KEY:
             raise ValueError(
-                "Azure OpenAI 가 구성되지 않았습니다. "
-                "AZURE_OPENAI_ENDPOINT / AZURE_OPENAI_API_KEY 를 확인하세요."
+                "RUNYOURAI_API_KEY 환경변수가 설정되지 않았습니다. "
+                ".env 또는 Container App secret(runyourai-key)을 확인하세요."
             )
-        _client = AzureOpenAI(
-            azure_endpoint=AZURE_OPENAI_ENDPOINT,
-            api_key=AZURE_OPENAI_API_KEY,
-            api_version=AZURE_OPENAI_API_VERSION,
+        _client = OpenAI(
+            api_key=RUNYOURAI_API_KEY,
+            base_url=RUNYOURAI_BASE_URL,
         )
     return _client
 
 
-def _get_client() -> AzureOpenAI:  # 내부 호환 alias
+def _get_client() -> OpenAI:  # 내부 호환 alias
     return get_report_llm_client()
 
 
@@ -291,8 +289,8 @@ def build_transcript_report(transcript_text: str) -> str:
     if not normalized:
         return "No transcript content available."
 
-    if not AZURE_OPENAI_API_KEY:
-        error_msg = "[ERROR] Transcript report generation failed: AZURE_OPENAI_API_KEY not configured."
+    if not RUNYOURAI_API_KEY:
+        error_msg = "[ERROR] Transcript report generation failed: RUNYOURAI_API_KEY not configured."
         print(error_msg)
         return error_msg
 

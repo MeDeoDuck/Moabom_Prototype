@@ -1,26 +1,25 @@
 """
-감정 및 항목(Aspect) 분석 — Azure OpenAI (GPT-4.1-mini)
+감정 및 항목(Aspect) 분석 — RunYourAI 통합 (기본 openai/gpt-4.1)
 
-원래 Groq Llama 기반이었으나 일일 토큰 한도(100K TPD) 문제로 Azure 로 전환.
+원래 Groq Llama → Azure OpenAI → RunYourAI 순으로 이관.
 클래스명(GroqAspectSentimentAnalyzer) 은 호출부 호환을 위해 그대로 유지.
 """
 import os
 from typing import Optional
-from langchain_openai import AzureChatOpenAI
+from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
 
 from .base_analyzer import BaseAspectSentimentAnalyzer
 from .models import AnalyzerConfig
 
 
-_AZURE_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT", "")
-_AZURE_API_KEY = os.getenv("AZURE_OPENAI_API_KEY", "")
-_AZURE_DEPLOYMENT = os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4.1-mini")
-_AZURE_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION", "2025-01-01-preview")
+_RUNYOURAI_API_KEY = os.getenv("RUNYOURAI_API_KEY", "")
+_RUNYOURAI_BASE_URL = os.getenv("RUNYOURAI_BASE_URL", "https://api.runyour.ai/v1")
+_RUNYOURAI_MODEL = os.getenv("RUNYOURAI_MODEL", "openai/gpt-4.1")
 
 
 class GroqAspectSentimentAnalyzer(BaseAspectSentimentAnalyzer):
-    """Azure OpenAI 를 사용한 감정 및 항목 분석기 (이름은 하위호환성 유지)."""
+    """RunYourAI 를 사용한 감정 및 항목 분석기 (이름은 하위호환성 유지)."""
 
     def __init__(
         self,
@@ -29,23 +28,22 @@ class GroqAspectSentimentAnalyzer(BaseAspectSentimentAnalyzer):
     ):
         """
         Args:
-            api_key: 호환을 위해 받지만 사용하지 않음 (Azure 는 환경변수로 인증)
-            config: 분석기 설정 — model_name 은 무시되고 Azure deployment 가 우선
+            api_key: 호환을 위해 받지만 사용하지 않음 (RunYourAI 는 환경변수로 인증)
+            config: 분석기 설정 — model_name 은 무시되고 RUNYOURAI_MODEL 환경변수가 우선
         """
         super().__init__(config)
 
-        if not _AZURE_ENDPOINT or not _AZURE_API_KEY:
+        if not _RUNYOURAI_API_KEY:
             raise ValueError(
-                "Azure OpenAI 가 구성되지 않았습니다. "
-                "AZURE_OPENAI_ENDPOINT / AZURE_OPENAI_API_KEY 환경변수를 확인하세요."
+                "RUNYOURAI_API_KEY 환경변수가 설정되지 않았습니다. "
+                ".env 또는 Container App secret(runyourai-key)을 확인하세요."
             )
-        self.api_key = _AZURE_API_KEY
+        self.api_key = _RUNYOURAI_API_KEY
 
-        self.llm = AzureChatOpenAI(
-            azure_endpoint=_AZURE_ENDPOINT,
-            api_key=_AZURE_API_KEY,
-            api_version=_AZURE_API_VERSION,
-            azure_deployment=_AZURE_DEPLOYMENT,
+        self.llm = ChatOpenAI(
+            api_key=_RUNYOURAI_API_KEY,
+            base_url=_RUNYOURAI_BASE_URL,
+            model=_RUNYOURAI_MODEL,
             temperature=self.config.temperature,
             max_tokens=self.config.max_tokens,
             model_kwargs={"response_format": {"type": "json_object"}},
@@ -58,7 +56,7 @@ class GroqAspectSentimentAnalyzer(BaseAspectSentimentAnalyzer):
         temperature: float = 0.1,
         max_tokens: int = 1000
     ) -> str:
-        """LangChain AzureChatOpenAI 호출 (temperature / max_tokens 은 __init__ 시 적용됨)."""
+        """LangChain ChatOpenAI 호출 (temperature / max_tokens 은 __init__ 시 적용됨)."""
         messages = [
             SystemMessage(content=system_prompt),
             HumanMessage(content=user_prompt),

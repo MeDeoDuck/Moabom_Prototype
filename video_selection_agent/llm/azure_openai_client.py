@@ -1,12 +1,14 @@
-"""Azure OpenAI (GPT-4.1-mini) 래퍼.
+"""RunYourAI 통합 LLM 래퍼 (기본 openai/gpt-4.1, OpenAI 호환).
 
 환경변수:
-  - AZURE_OPENAI_ENDPOINT
-  - AZURE_OPENAI_API_KEY
-  - AZURE_OPENAI_DEPLOYMENT     (기본: gpt-4.1-mini)
-  - AZURE_OPENAI_API_VERSION    (기본: 2025-01-01-preview)
+  - RUNYOURAI_API_KEY
+  - RUNYOURAI_BASE_URL    (기본: https://api.runyour.ai/v1)
+  - RUNYOURAI_MODEL       (기본: openai/gpt-4.1)
 
 `response_format={"type":"json_schema", "json_schema": {...}}`로 구조화 출력 강제.
+
+파일명은 하위호환을 위해 azure_openai_client.py로 유지 — provider_factory.py
+등에서 이 이름으로 import하는 곳을 깨지 않기 위함.
 """
 from __future__ import annotations
 
@@ -25,26 +27,29 @@ class LLMError(RuntimeError):
 
 @dataclass
 class AzureOpenAIConfig:
-    endpoint: str
+    """이름은 하위호환을 위해 유지. 내부는 RunYourAI 설정."""
+
+    base_url: str
     api_key: str
-    deployment: str
-    api_version: str
+    model: str
 
     @classmethod
     def from_env(cls) -> "AzureOpenAIConfig":
         return cls(
-            endpoint=os.getenv("AZURE_OPENAI_ENDPOINT", ""),
-            api_key=os.getenv("AZURE_OPENAI_API_KEY", ""),
-            deployment=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4.1-mini"),
-            api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2025-01-01-preview"),
+            base_url=os.getenv("RUNYOURAI_BASE_URL", "https://api.runyour.ai/v1"),
+            api_key=os.getenv("RUNYOURAI_API_KEY", ""),
+            model=os.getenv("RUNYOURAI_MODEL", "openai/gpt-4.1"),
         )
 
     def is_configured(self) -> bool:
-        return bool(self.endpoint and self.api_key)
+        return bool(self.api_key)
 
 
 class AzureOpenAIClient:
-    """GPT-4.1-mini 구조화 출력 호출 래퍼."""
+    """RunYourAI(OpenAI 호환) 구조화 출력 호출 래퍼.
+
+    클래스명은 하위호환 유지. provider_factory.get_default_llm() 결과.
+    """
 
     def __init__(self, config: AzureOpenAIConfig | None = None):
         self.config = config or AzureOpenAIConfig.from_env()
@@ -54,15 +59,14 @@ class AzureOpenAIClient:
         if self._client is not None:
             return self._client
         if not self.config.is_configured():
-            raise LLMError("Azure OpenAI not configured (endpoint/api_key missing)")
+            raise LLMError("RunYourAI not configured (RUNYOURAI_API_KEY missing)")
         try:
-            from openai import AzureOpenAI
+            from openai import OpenAI
         except ImportError as e:
             raise LLMError(f"openai SDK not installed: {e}") from e
-        self._client = AzureOpenAI(
-            azure_endpoint=self.config.endpoint,
+        self._client = OpenAI(
             api_key=self.config.api_key,
-            api_version=self.config.api_version,
+            base_url=self.config.base_url,
         )
         return self._client
 
@@ -78,7 +82,7 @@ class AzureOpenAIClient:
         client = self._get_client()
         try:
             response = client.chat.completions.create(
-                model=self.config.deployment,
+                model=self.config.model,
                 messages=[
                     {"role": "system", "content": system},
                     {"role": "user", "content": user},
@@ -88,15 +92,15 @@ class AzureOpenAIClient:
                 temperature=temperature,
             )
         except Exception as e:
-            raise LLMError(f"Azure chat completion failed: {e}") from e
+            raise LLMError(f"RunYourAI chat completion failed: {e}") from e
 
         choice = response.choices[0] if response.choices else None
         if choice is None:
-            raise LLMError("Azure response has no choices")
+            raise LLMError("LLM response has no choices")
         if choice.finish_reason == "length":
-            raise LLMError("Azure response truncated (max_tokens)")
+            raise LLMError("LLM response truncated (max_tokens)")
         content = choice.message.content or ""
         try:
             return json.loads(content)
         except json.JSONDecodeError as e:
-            raise LLMError(f"Azure response not valid JSON: {e}; content={content[:200]}") from e
+            raise LLMError(f"LLM response not valid JSON: {e}; content={content[:200]}") from e

@@ -9,7 +9,7 @@ import json
 from datetime import date
 from typing import List, Dict, Optional, Tuple
 
-from scripts.config import AZURE_OPENAI_API_KEY
+from scripts.config import RUNYOURAI_API_KEY
 from scripts.database.queries import query_one, query_all, execute_insert, execute_update
 from scripts.reports.transcript_report import (
     build_transcript_report,
@@ -228,14 +228,14 @@ def build_product_integrated_insight_report(
     today_str = date.today().isoformat()
     prompt = build_product_integrated_insight_prompt(product_name, truncated, today_str=today_str)
 
-    if not AZURE_OPENAI_API_KEY:
-        print("[WARN] AZURE_OPENAI_API_KEY not configured — using heuristic fallback")
+    if not RUNYOURAI_API_KEY:
+        print("[WARN] RUNYOURAI_API_KEY not configured — using heuristic fallback")
         return (_heuristic_fallback_report(product_name, truncated), HEURISTIC_MODEL_LABEL)
 
     try:
         client = get_report_llm_client()
     except ValueError as e:
-        print(f"[WARN] Azure OpenAI client unavailable: {e} — using heuristic fallback")
+        print(f"[WARN] RunYourAI client unavailable: {e} — using heuristic fallback")
         return (_heuristic_fallback_report(product_name, truncated), HEURISTIC_MODEL_LABEL)
 
     try:

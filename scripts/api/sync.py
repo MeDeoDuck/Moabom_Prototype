@@ -7,7 +7,7 @@ from scripts.database.queries import query_one, query_all, execute_update, execu
 from scripts.database.connection import get_connection
 from scripts.youtube.video_service import fetch_product_videos
 from scripts.youtube.comment_service import fetch_video_comments  # Fallback용 항상 import
-from scripts.config import YOUTUBE_API_KEY, DATABASE_URL, AZURE_OPENAI_API_KEY  # 항상 import
+from scripts.config import YOUTUBE_API_KEY, DATABASE_URL, RUNYOURAI_API_KEY  # 항상 import
 from scripts.analysis.confidence_weights import (
     get_analysis_weight,
     LOW_CONFIDENCE_WARNING_THRESHOLD,
@@ -335,8 +335,8 @@ def process_comments_with_agent(video_id, product_name):
     if not AGENT_AVAILABLE:
         raise Exception("Comment filtering agent is not available")
     
-    if not AZURE_OPENAI_API_KEY or not YOUTUBE_API_KEY:
-        raise Exception("Missing API keys (YOUTUBE_API_KEY or AZURE_OPENAI_API_KEY)")
+    if not RUNYOURAI_API_KEY or not YOUTUBE_API_KEY:
+        raise Exception("Missing API keys (YOUTUBE_API_KEY or RUNYOURAI_API_KEY)")
 
     print(f"[AGENT] Starting comment processing for video: {video_id}")
     batch_id = str(uuid.uuid4())
