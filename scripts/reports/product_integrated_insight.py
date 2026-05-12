@@ -5,8 +5,10 @@
 출력: 영상별 보고서들만을 근거로 합성한 9섹션 통합 인사이트 보고서.
 환각 방지: 입력 보고서에 등장하지 않은 사실은 절대 만들어 내지 않는다.
 """
+import asyncio
 import json
 from datetime import date
+from time import perf_counter
 from typing import List, Dict, Optional, Tuple
 
 from scripts.config import RUNYOURAI_API_KEY
@@ -29,16 +31,18 @@ TOTAL_INPUT_MAX_CHARS = 18000
 
 HEURISTIC_MODEL_LABEL = "heuristic"
 
+# Pass 2 동시성 상한 — feedback_llm_perf_lessons 측정 기준
+COLLECT_MAX_CONCURRENCY = 5
+
+# 라우트가 즉시 읽을 수 있도록 마지막 호출의 perf breakdown 저장
+_LAST_COLLECT_PERF: Dict = {}
+_LAST_LLM_PERF: Dict = {}
+
 
 # ── 1) 입력 수집 ─────────────────────────────────────────────────
 
-def _fetch_and_save_transcript(video_id: str) -> Optional[str]:
-    """video_transcripts에 자막이 없을 때 youtube에서 가져와 저장하고 본문을 반환한다.
-    실패 시 None.
-    """
-    fetched = fetch_video_transcript(video_id)
-    if not fetched or not fetched.get("transcript_text"):
-        return None
+def _save_transcript_row(video_id: str, fetched: Dict) -> None:
+    """fetch_video_transcript 결과를 video_transcripts에 UPSERT (메인 스레드 전용)."""
     execute_update(
         """INSERT INTO video_transcripts (video_id, transcript_text, language_code, segment_count, source)
            VALUES (%s, %s, %s, %s, %s)
@@ -57,75 +61,201 @@ def _fetch_and_save_transcript(video_id: str) -> Optional[str]:
             "youtube_transcript_api",
         ),
     )
-    return fetched["transcript_text"]
 
 
-def collect_transcript_reports_for_product(
+def _worker_fetch_and_build(vid: str, transcript_text: Optional[str]) -> Dict:
+    """병렬 워커: DB 접근 금지. fetch_video_transcript + build_transcript_report만 수행.
+    반환: {"video_id", "transcript_text", "fetched_payload", "transcript_report", "fetch_ms", "build_ms", "error"}
+    """
+    result: Dict = {
+        "video_id": vid,
+        "transcript_text": transcript_text,
+        "fetched_payload": None,  # video_transcripts UPSERT용 raw payload (Pass 3에서 사용)
+        "transcript_report": None,
+        "fetch_ms": 0.0,
+        "build_ms": 0.0,
+        "error": None,
+    }
+
+    # 자막 없으면 받기
+    if not transcript_text:
+        t0 = perf_counter()
+        try:
+            fetched = fetch_video_transcript(vid)
+        except Exception as e:
+            result["error"] = f"fetch_failed: {type(e).__name__}: {e}"
+            result["fetch_ms"] = (perf_counter() - t0) * 1000
+            return result
+        result["fetch_ms"] = (perf_counter() - t0) * 1000
+        if not fetched or not fetched.get("transcript_text"):
+            result["error"] = "fetch_empty"
+            return result
+        result["fetched_payload"] = fetched
+        result["transcript_text"] = fetched["transcript_text"]
+
+    # 자막 → 보고서 생성
+    t0 = perf_counter()
+    try:
+        generated = build_transcript_report(result["transcript_text"])
+    except Exception as e:
+        result["error"] = f"build_failed: {type(e).__name__}: {e}"
+        result["build_ms"] = (perf_counter() - t0) * 1000
+        return result
+    result["build_ms"] = (perf_counter() - t0) * 1000
+    if not generated or generated.startswith("[ERROR]"):
+        result["error"] = "build_empty_or_error"
+        return result
+    result["transcript_report"] = generated
+    return result
+
+
+async def collect_transcript_reports_for_product(
     product_id: int,
     video_ids: List[str],
 ) -> List[Dict]:
     """
-    선택된 영상들에 대해 video_reports.transcript_report를 조회한다.
+    선택된 영상들에 대해 video_reports.transcript_report를 조회하고, 누락분은 병렬로 보완한다.
 
-    종합 인사이트는 영상 상세 페이지 방문 여부와 무관하게 self-contained 동작해야 하므로,
-    각 영상에 대해 다음 순서로 자체 보완한다:
-      1) video_reports.transcript_report 가 있으면 사용
-      2) 없으면 video_transcripts.transcript_text 로 build_transcript_report 호출
-      3) 자막 본문도 없으면 fetch_video_transcript 로 YouTube에서 직접 받아 저장 후 위 2)
-      4) 모든 단계 실패한 영상만 결과에서 제외
+    Self-healing 3-pass 구조:
+      Pass 1: 직렬 DB 일괄 조회 — 캐시 hit/miss 분류
+      Pass 2: 병렬 워커 (asyncio.gather + to_thread, Semaphore=COLLECT_MAX_CONCURRENCY)
+              fetch_video_transcript + build_transcript_report만. DB 접근 금지.
+      Pass 3: 직렬 DB 쓰기 — video_transcripts UPSERT + upsert_video_report
 
-    반환: [{"video_id": ..., "title": ..., "transcript_report": ...}, ...]
+    반환: [{"video_id": ..., "title": ..., "transcript_report": ...}, ...] (입력 순서 보존)
     """
-    results: List[Dict] = []
+    global _LAST_COLLECT_PERF
+    route_t0 = perf_counter()
 
+    if not video_ids:
+        _LAST_COLLECT_PERF = {
+            "total_ms": 0.0, "cache_hits": 0, "self_heal_count": 0,
+            "fetch_ms_sum": 0.0, "build_report_ms_sum": 0.0, "per_video": [],
+        }
+        return []
+
+    # ── Pass 1: 직렬 DB 일괄 조회 ───────────────────────────
+    # video_ids는 사용자가 보낸 임의 문자열이라 placeholder 동적 생성 (psycopg2가 escape 처리)
+    placeholders = ",".join(["%s"] * len(video_ids))
+    videos_params = tuple(video_ids) + (product_id,)
+    video_rows = query_all(
+        f"SELECT video_id, title FROM videos WHERE video_id IN ({placeholders}) AND product_id = %s",
+        videos_params,
+    )
+    video_meta = {r["video_id"]: r for r in video_rows}
+
+    report_rows = query_all(
+        f"SELECT video_id, transcript_report FROM video_reports WHERE video_id IN ({placeholders})",
+        tuple(video_ids),
+    )
+    cached_reports = {r["video_id"]: r.get("transcript_report") for r in report_rows if r.get("transcript_report")}
+
+    # cached_reports에 없는 영상만 자막 캐시 조회
+    need_after_report = [v for v in video_ids if v in video_meta and v not in cached_reports]
+    cached_transcripts: Dict[str, str] = {}
+    if need_after_report:
+        placeholders2 = ",".join(["%s"] * len(need_after_report))
+        transcript_rows = query_all(
+            f"SELECT video_id, transcript_text FROM video_transcripts WHERE video_id IN ({placeholders2})",
+            tuple(need_after_report),
+        )
+        cached_transcripts = {r["video_id"]: r.get("transcript_text") for r in transcript_rows if r.get("transcript_text")}
+
+    # 영상별 상태 분류
+    ready: Dict[str, str] = {}  # vid -> transcript_report
+    pending: List[Tuple[str, Optional[str]]] = []  # (vid, transcript_text or None)
+    not_found: List[str] = []
     for vid in video_ids:
-        video_row = query_one(
-            "SELECT video_id, title FROM videos WHERE video_id = %s AND product_id = %s",
-            (vid, product_id),
-        )
-        if not video_row:
-            print(f"[WARN] product_integrated_insight: video {vid} not found for product {product_id}")
+        if vid not in video_meta:
+            not_found.append(vid)
             continue
+        if vid in cached_reports:
+            ready[vid] = cached_reports[vid]
+        else:
+            pending.append((vid, cached_transcripts.get(vid)))
 
-        # 1) transcript_report 캐시 확인
-        report_row = query_one(
-            "SELECT transcript_report FROM video_reports WHERE video_id = %s",
-            (vid,),
+    for vid in not_found:
+        print(f"[WARN] product_integrated_insight: video {vid} not found for product {product_id}")
+
+    # ── Pass 2: 병렬 워커 ──────────────────────────────────
+    worker_results: List[Dict] = []
+    if pending:
+        semaphore = asyncio.Semaphore(COLLECT_MAX_CONCURRENCY)
+
+        async def _bounded(vid: str, ttext: Optional[str]) -> Dict:
+            async with semaphore:
+                return await asyncio.to_thread(_worker_fetch_and_build, vid, ttext)
+
+        gathered = await asyncio.gather(
+            *[_bounded(vid, ttext) for vid, ttext in pending],
+            return_exceptions=True,
         )
-        transcript_report = report_row.get("transcript_report") if report_row else None
-
-        if not transcript_report:
-            # 2) transcript_text 캐시 확인
-            transcript_row = query_one(
-                "SELECT transcript_text FROM video_transcripts WHERE video_id = %s",
-                (vid,),
-            )
-            transcript_text = transcript_row.get("transcript_text") if transcript_row else None
-
-            # 3) 자막조차 없으면 YouTube에서 즉시 받아 저장
-            if not transcript_text:
-                print(f"[DEBUG] product_integrated_insight: fetching missing transcript for {vid}")
-                transcript_text = _fetch_and_save_transcript(vid)
-                if not transcript_text:
-                    print(f"[WARN] product_integrated_insight: transcript fetch failed for {vid}, skipping")
-                    continue
-
-            # 자막 → 자막 기반 보고서 생성 + 저장
-            print(f"[DEBUG] product_integrated_insight: generating missing transcript_report for {vid}")
-            generated = build_transcript_report(transcript_text)
-            if not generated or generated.startswith("[ERROR]"):
-                print(f"[WARN] product_integrated_insight: failed to generate transcript_report for {vid}")
+        for vid_ttext, res in zip(pending, gathered):
+            if isinstance(res, BaseException):
+                print(f"[WARN] product_integrated_insight: worker exception for {vid_ttext[0]}: {type(res).__name__}: {res}")
                 continue
-            upsert_video_report(vid, transcript_report=generated)
-            transcript_report = generated
+            worker_results.append(res)
 
+    # ── Pass 3: 직렬 DB 쓰기 ───────────────────────────────
+    fetch_ms_sum = 0.0
+    build_ms_sum = 0.0
+    self_heal_success = 0
+    per_video_perf: List[Dict] = []
+    for res in worker_results:
+        fetch_ms_sum += res["fetch_ms"]
+        build_ms_sum += res["build_ms"]
+        per_video_perf.append({
+            "video_id": res["video_id"],
+            "fetch_ms": round(res["fetch_ms"], 1),
+            "build_ms": round(res["build_ms"], 1),
+            "error": res["error"],
+        })
+        if res["error"]:
+            print(f"[WARN] product_integrated_insight: skip {res['video_id']} — {res['error']}")
+            continue
+        if res["fetched_payload"]:
+            _save_transcript_row(res["video_id"], res["fetched_payload"])
+        upsert_video_report(res["video_id"], transcript_report=res["transcript_report"])
+        ready[res["video_id"]] = res["transcript_report"]
+        self_heal_success += 1
+
+    # ── 결과 조립 (입력 순서 보존) ─────────────────────────
+    results: List[Dict] = []
+    for vid in video_ids:
+        if vid not in ready:
+            continue
+        meta = video_meta.get(vid, {})
         results.append({
-            "video_id": video_row["video_id"],
-            "title": video_row.get("title") or "",
-            "transcript_report": transcript_report,
+            "video_id": vid,
+            "title": meta.get("title") or "",
+            "transcript_report": ready[vid],
         })
 
+    total_ms = (perf_counter() - route_t0) * 1000
+    _LAST_COLLECT_PERF = {
+        "total_ms": round(total_ms, 1),
+        "cache_hits": len(cached_reports),
+        "self_heal_count": self_heal_success,
+        "fetch_ms_sum": round(fetch_ms_sum, 1),
+        "build_report_ms_sum": round(build_ms_sum, 1),
+        "per_video": per_video_perf,
+    }
+    print(
+        f"[PERF][collect] product_id={product_id} total_ms={total_ms:.1f} "
+        f"cache_hits={len(cached_reports)} self_heal={self_heal_success}/{len(pending)} "
+        f"fetch_sum_ms={fetch_ms_sum:.1f} build_sum_ms={build_ms_sum:.1f}"
+    )
     return results
+
+
+def get_last_collect_perf() -> Dict:
+    """라우트가 응답 JSON 조립용으로 마지막 collect perf breakdown을 읽는다."""
+    return dict(_LAST_COLLECT_PERF)
+
+
+def get_last_llm_perf() -> Dict:
+    """라우트가 응답 JSON 조립용으로 마지막 build LLM perf breakdown을 읽는다."""
+    return dict(_LAST_LLM_PERF)
 
 
 # ── 2) 통합 보고서 생성 ──────────────────────────────────────────
@@ -221,7 +351,11 @@ def build_product_integrated_insight_report(
 
     반환: (report_text, model_used)
     """
+    global _LAST_LLM_PERF
+    _LAST_LLM_PERF = {"llm_ms": None, "fallback": False}
+
     if not per_video_reports:
+        _LAST_LLM_PERF["fallback"] = True
         return ("[ERROR] 입력 보고서가 없습니다.", HEURISTIC_MODEL_LABEL)
 
     truncated = _truncate_per_video(per_video_reports)
@@ -230,34 +364,43 @@ def build_product_integrated_insight_report(
 
     if not RUNYOURAI_API_KEY:
         print("[WARN] RUNYOURAI_API_KEY not configured — using heuristic fallback")
+        _LAST_LLM_PERF["fallback"] = True
         return (_heuristic_fallback_report(product_name, truncated), HEURISTIC_MODEL_LABEL)
 
     try:
         client = get_report_llm_client()
     except ValueError as e:
         print(f"[WARN] RunYourAI client unavailable: {e} — using heuristic fallback")
+        _LAST_LLM_PERF["fallback"] = True
         return (_heuristic_fallback_report(product_name, truncated), HEURISTIC_MODEL_LABEL)
 
     try:
         print(f"[DEBUG] product_integrated_insight: calling {REPORT_LLM_DEPLOYMENT} for {product_name} (n={len(truncated)})")
+        llm_t0 = perf_counter()
         response = client.chat.completions.create(
             model=REPORT_LLM_DEPLOYMENT,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.2,
             max_tokens=2200,
         )
+        llm_ms = (perf_counter() - llm_t0) * 1000
+        _LAST_LLM_PERF["llm_ms"] = round(llm_ms, 1)
+        print(f"[PERF][insight_llm] product={product_name} n={len(truncated)} llm_ms={llm_ms:.1f}")
         if not response.choices:
             print("[WARN] product_integrated_insight: empty response — using heuristic fallback")
+            _LAST_LLM_PERF["fallback"] = True
             return (_heuristic_fallback_report(product_name, truncated), HEURISTIC_MODEL_LABEL)
         text = response.choices[0].message.content or ""
         text = fix_encoding(text.strip())
         if not text:
             print("[WARN] product_integrated_insight: empty text — using heuristic fallback")
+            _LAST_LLM_PERF["fallback"] = True
             return (_heuristic_fallback_report(product_name, truncated), HEURISTIC_MODEL_LABEL)
         print(f"[DEBUG] product_integrated_insight: report length={len(text)}")
         return (text, REPORT_LLM_DEPLOYMENT)
     except Exception as e:
         print(f"[ERROR] product_integrated_insight LLM call failed: {type(e).__name__}: {e}")
+        _LAST_LLM_PERF["fallback"] = True
         return (_heuristic_fallback_report(product_name, truncated), HEURISTIC_MODEL_LABEL)
 
 
