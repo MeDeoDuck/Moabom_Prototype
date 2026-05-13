@@ -20,7 +20,7 @@ from scripts.config import YOUTUBE_API_KEY
 from video_selection_agent.core.models import ProductContext, VideoCandidate
 
 
-_PER_QUERY_LIMIT = 18
+_PER_QUERY_LIMIT = 25
 _SEARCH_URL = "https://www.googleapis.com/youtube/v3/search"
 _VIDEOS_URL = "https://www.googleapis.com/youtube/v3/videos"
 
@@ -63,7 +63,6 @@ def _search_once(client: httpx.Client, query: str, limit: int) -> list[str]:
         "part": "snippet",
         "q": query,
         "type": "video",
-        "videoEmbeddable": "true",
         "maxResults": limit,
         "key": YOUTUBE_API_KEY,
     }

@@ -57,6 +57,22 @@ def finalize_selection(state: SelectionState) -> SelectionState:
         picked = eligible[:k]
         trace.append(f"finalize_selection[auto]: top-{len(picked)} / k={k}")
 
+    # Fallback — 마이너 제품처럼 검색 결과·다양성 필터로 후보가 부족할 때
+    # k_min(3) 보장. diversity_filter에서 rank=0으로 묻힌 후보를 final_score 순으로 부활.
+    if len(picked) < policy.k_min:
+        picked_ids = {s.video_id for s in picked}
+        leftovers = sorted(
+            (s for s in scores.values() if s.rank == 0 and s.video_id not in picked_ids),
+            key=lambda s: s.final_score,
+            reverse=True,
+        )
+        need = policy.k_min - len(picked)
+        picked.extend(leftovers[:need])
+        trace.append(
+            f"finalize_selection[fallback]: padded {min(need, len(leftovers))} rank=0 leftovers "
+            f"→ total {len(picked)}"
+        )
+
     final: list[SelectedVideo] = []
     for idx, sb in enumerate(picked, start=1):
         c = candidates.get(sb.video_id)
