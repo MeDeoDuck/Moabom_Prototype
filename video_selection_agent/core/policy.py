@@ -39,7 +39,7 @@ class SelectionPolicyConfig:
     k_min: int = 3
     k_max: int = 10
     candidate_pool_size: int = 30
-    max_per_channel: int = 2
+    max_per_channel: int = 3
     mega_tier_ratio_cap: float = 0.40
     small_or_below_min_ratio: float = 0.20
     weights: ScoringWeights = field(default_factory=ScoringWeights)
