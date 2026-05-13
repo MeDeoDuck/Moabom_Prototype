@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="robots" content="noindex,nofollow">
+<title>모아봄 · 운영 대시보드</title>
+<style>
+  body { font-family: 'Pretendard', -apple-system, sans-serif; background: #f7f5fb; color: #1f1c2e; margin: 0; padding: 24px; }
+  h1 { font-size: 20px; margin: 0 0 8px; }
+  h2 { font-size: 16px; margin: 32px 0 12px; color: #5a32a3; }
+  .totals { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-top: 16px; }
+  .card { background: #fff; border: 1px solid #e7e2f3; border-radius: 10px; padding: 14px 16px; box-shadow: 0 2px 8px rgba(111,66,193,0.05); }
+  .card .label { font-size: 11px; color: #6b6880; text-transform: uppercase; letter-spacing: 0.5px; }
+  .card .value { font-size: 24px; font-weight: 700; margin-top: 4px; }
+  table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 8px rgba(111,66,193,0.05); }
+  th, td { padding: 9px 12px; text-align: left; font-size: 13px; border-bottom: 1px solid #f1edf9; }
+  th { background: #efe9fb; font-weight: 600; color: #5a32a3; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .muted { color: #9690a8; font-size: 11px; }
+  .channel-tag { display: inline-block; padding: 2px 8px; border-radius: 4px; background: #efe9fb; color: #5a32a3; font-size: 11px; font-weight: 600; }
+  .event-tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  .event-page_view { background: #e3f2fd; color: #1565c0; }
+  .event-product_create { background: #fff3e0; color: #ef6c00; }
+  .event-video_sync { background: #f3e5f5; color: #7b1fa2; }
+  .event-integrated_insight { background: #e8f5e9; color: #2e7d32; }
+  .small-sid { font-family: monospace; font-size: 11px; color: #6b6880; }
+</style>
+</head>
+<body>
+<h1>📊 모아봄 운영 대시보드</h1>
+<div class="muted">
+  첫 이벤트: {{ totals.first_event_at if totals.first_event_at else '—' }}
+  · 최신 이벤트: {{ totals.last_event_at if totals.last_event_at else '—' }}
+</div>
+
+<div class="totals">
+  <div class="card"><div class="label">총 세션</div><div class="value">{{ totals.total_sessions or 0 }}</div></div>
+  <div class="card"><div class="label">총 이벤트</div><div class="value">{{ totals.total_events or 0 }}</div></div>
+  <div class="card"><div class="label">page_view</div><div class="value">{{ totals.page_views or 0 }}</div></div>
+  <div class="card"><div class="label">product_create</div><div class="value">{{ totals.product_creates or 0 }}</div></div>
+  <div class="card"><div class="label">video_sync</div><div class="value">{{ totals.video_syncs or 0 }}</div></div>
+  <div class="card"><div class="label">integrated_insight</div><div class="value">{{ totals.insights or 0 }}</div></div>
+</div>
+
+<h2>채널별 funnel</h2>
+<table>
+  <thead>
+    <tr>
+      <th>채널</th>
+      <th class="num">세션</th>
+      <th class="num">page views</th>
+      <th class="num">제품 페이지 진입</th>
+      <th class="num">제품 생성</th>
+      <th class="num">video sync</th>
+      <th class="num">종합 인사이트</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for c in channels %}
+    <tr>
+      <td><span class="channel-tag">{{ c.channel }}</span></td>
+      <td class="num">{{ c.sessions }}</td>
+      <td class="num">{{ c.page_views }}</td>
+      <td class="num">{{ c.sessions_viewed_product }}</td>
+      <td class="num">{{ c.sessions_created_product }}</td>
+      <td class="num">{{ c.sessions_synced }}</td>
+      <td class="num">{{ c.sessions_insighted }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="7" class="muted" style="text-align:center; padding: 24px;">아직 이벤트가 없습니다</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<h2>일자별 추이 (최근 14일)</h2>
+<table>
+  <thead>
+    <tr>
+      <th>날짜</th>
+      <th class="num">고유 세션</th>
+      <th class="num">page views</th>
+      <th class="num">actions</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for d in daily %}
+    <tr>
+      <td>{{ d.day }}</td>
+      <td class="num">{{ d.sessions }}</td>
+      <td class="num">{{ d.page_views }}</td>
+      <td class="num">{{ d.actions }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="4" class="muted" style="text-align:center; padding: 24px;">아직 이벤트가 없습니다</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<h2>최근 이벤트 ({{ recent|length }}건)</h2>
+<table>
+  <thead>
+    <tr>
+      <th>시각</th>
+      <th>이벤트</th>
+      <th>채널</th>
+      <th>session</th>
+      <th>path</th>
+      <th>product</th>
+      <th>video</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for e in recent %}
+    <tr>
+      <td class="small-sid">{{ e.ts.strftime('%m-%d %H:%M:%S') if e.ts else '—' }}</td>
+      <td><span class="event-tag event-{{ e.event_type }}">{{ e.event_type }}</span></td>
+      <td>{{ e.utm_source or '—' }}</td>
+      <td class="small-sid">{{ e.session_uuid|string|truncate(8, true, '') }}</td>
+      <td class="small-sid">{{ e.path or '—' }}</td>
+      <td>{{ e.product_id or '' }}</td>
+      <td class="small-sid">{{ e.video_id or '' }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="7" class="muted" style="text-align:center; padding: 24px;">아직 이벤트가 없습니다</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<p class="muted" style="margin-top: 32px;">
+  raw JSON: <a href="/admin/api/events.json?token={{ request.query_params.get('token','') }}&limit=500">/admin/api/events.json</a>
+</p>
+</body>
+</html>

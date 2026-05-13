@@ -27,7 +27,9 @@ from scripts.database.schema import init_db
 from scripts.api.products import register_product_routes
 from scripts.api.videos import register_video_routes
 from scripts.api.sync import register_sync_routes
+from scripts.api.admin import register_admin_routes
 from video_selection_agent.api.routes import register_selection_routes
+from scripts.tracking import UsageTrackingMiddleware, GATagMiddleware
 
 
 # ============================================================================
@@ -47,6 +49,8 @@ class UTF8CharsetMiddleware(BaseHTTPMiddleware):
 
 
 app.add_middleware(UTF8CharsetMiddleware)
+app.add_middleware(GATagMiddleware, measurement_id=os.getenv("GA_MEASUREMENT_ID"))
+app.add_middleware(UsageTrackingMiddleware)
 
 
 # Ensure templates directory exists
@@ -70,6 +74,7 @@ print("[STARTUP] Registering API routes...")
 register_product_routes(app)
 register_video_routes(app)
 register_sync_routes(app)
+register_admin_routes(app)
 register_selection_routes(app)
 print("[STARTUP] All routes registered")
 

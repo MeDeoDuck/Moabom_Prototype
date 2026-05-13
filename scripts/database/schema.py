@@ -535,6 +535,29 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_pir_product ON product_integrated_reports(product_id);
     """)
 
+    # ========================================
+    # 사용량 추적 (채널별 UTM + funnel)
+    # ========================================
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS usage_events (
+            id            BIGSERIAL PRIMARY KEY,
+            session_uuid  UUID NOT NULL,
+            utm_source    VARCHAR(32),
+            event_type    VARCHAR(32) NOT NULL,
+            path          VARCHAR(512),
+            product_id    INT,
+            video_id      VARCHAR(64),
+            referrer      TEXT,
+            user_agent    VARCHAR(512),
+            extra         JSONB,
+            ts            TIMESTAMPTZ DEFAULT NOW()
+        );
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_usage_session ON usage_events(session_uuid);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_usage_utm ON usage_events(utm_source);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_usage_event_type ON usage_events(event_type);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_usage_ts ON usage_events(ts);")
+
     conn.commit()
     cursor.close()
     conn.close()
