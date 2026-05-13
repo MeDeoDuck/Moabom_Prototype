@@ -17,23 +17,23 @@
 - 각자 맡은 기능은 **전용 폴더/파일을 새로 만들어 모듈화**된 형태로 구현. 기존 파일에 로직 섞지 말 것.
 - 비기능 요구사항 NR-007/012: 모델·모듈 교체 시 기존 시스템 수정이 최소화되도록 의존성을 얇게 유지.
 
-## 기술 스택 (현 구현 기준)
+## 기술 스택 (현 구현 기준 — 2026-05-14 최신)
 **스택이 변경될 때마다 이 섹션(및 관련 문서)을 즉시 업데이트할 것.** 명세서 임시안과 현 구현이 갈리는 항목이 많으므로 아래 "현 구현"을 기준으로 작업.
 
 - Frontend: **Jinja2 HTML templates** (`templates/`) + Vanilla JS + Markdown 렌더링 — 명세 임시안 React/TypeScript는 미적용
 - Backend: FastAPI + Uvicorn + Pydantic
 - DB: **PostgreSQL 15** (`psycopg2-binary`) — **14개 테이블 + Schema Auto-init** (기동 시 자동 생성). 주요 테이블: `video_transcripts`, `video_reports`, `product_integrated_reports`(INSERT 누적), `agent_decisions`, `aspect_extractions`, `comment_sentiments`
 - 데이터 수집: YouTube Data API v3, `youtube-transcript-api`, `yt-dlp`
-- LLM: **Azure OpenAI GPT-4.1-mini** (메인) — 댓글 분류·감성 분석, 영상 선택 Agent, 보고서 생성 등 모든 LLM 호출에 사용
-  - 환경변수: `AZURE_OPENAI_ENDPOINT/API_KEY/DEPLOYMENT/API_VERSION`
-  - 호출 경로: `langchain-core` + `langchain-openai`(`AzureChatOpenAI`)
-  - commit `32d6e55`에서 Groq Llama 사용처를 모두 Azure OpenAI로 이관 (Groq은 deprecated, 코드만 잔존)
+- LLM: **RunYourAI GPT-4.1** (`openai/gpt-4.1-2025-04-14`, full) — 댓글 분류·감성 분석, 영상 선택 Agent, 보고서 생성 등 모든 LLM 호출에 사용
+  - 환경변수: `RUNYOURAI_API_KEY` (Container App secret `runyourai-key`) / `RUNYOURAI_BASE_URL` (default `https://api.runyour.ai/v1`) / `RUNYOURAI_MODEL`
+  - 호출 경로: `langchain-openai`(`ChatOpenAI` + `base_url`, OpenAI 호환 endpoint). 단일 진입점 `scripts/llm/__init__.py:get_chat_llm()`
+  - PR #15에서 Azure OpenAI → RunYourAI 통합 게이트웨이로 이관 (Azure 잔존 클라이언트는 `video_selection_agent/llm/azure_openai_client.py` 파일명만 유지하고 내부는 RunYourAI 호출)
 - 에이전틱 워크플로우: **LangGraph** (`video_selection_agent/graph/`, FR-005 영상 선택 StateGraph). 영상 선정 Agent 7-step (fetch_candidate → enrich_metadata → score_quantitative 6차원 가중합 → 다양성 필터 → LLM Re-rank → finalize_selection → generate_rationale)
 - 댓글 필터링 Agent 7-step: 수집 → 전처리 → Rule Soft Filter(12종) → 후보 가공 Top 300 → Multi-Criteria 6기준 선정 → LLM 5-class 분류 → Agent Decision Engine + ABSA 감성 분석. 영상 단위 **ThreadPoolExecutor 병렬 처리**.
 - PDF 출력: **ReportLab** (한글 폰트 적용)
-- 인프라/배포: **Azure Container Apps** (`rg-moabom` / `cae-moabom` / `ca-moabom`, FastAPI Port 8000, CPU 0.5 / Mem 1Gi) + **Azure PostgreSQL Flexible Server** (B1ms, db: `techdb`, sslmode=require) + **Azure Container Registry** (`moabom-app:tag`) + **Azure Log Analytics** (30일 보존). Docker · docker-compose 로컬 개발.
+- 인프라/배포: **Azure Container Apps** (`rg-moabom` / `cae-moabom` / `ca-moabom`, FastAPI Port 8000, **CPU 1.0 / Mem 2Gi, min=2 / max=5 replicas**) + **Azure PostgreSQL Flexible Server** (**Standard_B2s, 2 vCPU / 4GB, max_connections=200**, db: `techdb`, sslmode=require) + **Azure Container Registry** (`moabom-app:tag`) + **Azure Log Analytics** (30일 보존). Docker · docker-compose 로컬 개발. 2026-05-14 v1 사용자 설문 배포 대응으로 상향 (이전 0.5/1Gi · min=1/max=1 · B1ms).
 - MLOps: Airflow 실험 단계 (`dags/youtube_product_sync_dag.py`) — 운영 미연결
-- 감성 분석: 현재 GPT-4.1-mini API. **KLUE-BERT 자체 운영 검토 중** (Break-even 약 1.24만 댓글/일).
+- 감성 분석: 현재 RunYourAI GPT-4.1 API. **KLUE-BERT 자체 운영 검토 중** (Break-even 약 1.24만 댓글/일).
 - 회원/인증: **미구현** (5월 4주차 착수 예정, Google OAuth)
 - 명세 임시안 중 **미적용/미구현**: Redis, VectorDB, Gemini, Transformers, scikit-learn, vLLM, RAG, ELK
 
