@@ -34,7 +34,7 @@ def _channels_summary() -> list[dict]:
           COALESCE(utm_source, 'direct')                                AS channel,
           COUNT(DISTINCT session_uuid)                                  AS sessions,
           COUNT(*) FILTER (WHERE event_type = 'page_view')              AS page_views,
-          COUNT(DISTINCT session_uuid) FILTER (WHERE event_type = 'page_view' AND path LIKE '/products/%') AS sessions_viewed_product,
+          COUNT(DISTINCT session_uuid) FILTER (WHERE event_type = 'page_view' AND path LIKE '/products/%%') AS sessions_viewed_product,
           COUNT(DISTINCT session_uuid) FILTER (WHERE event_type = 'product_create')      AS sessions_created_product,
           COUNT(DISTINCT session_uuid) FILTER (WHERE event_type = 'video_sync')          AS sessions_synced,
           COUNT(DISTINCT session_uuid) FILTER (WHERE event_type = 'integrated_insight')  AS sessions_insighted
