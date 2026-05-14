@@ -161,24 +161,31 @@ def fetch_video_transcript(video_id: str) -> Optional[Dict[str, Any]]:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             print(f"[TRANSCRIPT] Extracting metadata from {url}")
             info = ydl.extract_info(url, download=False, process=False)
-            
-            subtitles_data = info.get('automatic_captions') or info.get('subtitles') or {}
-            print(f"[TRANSCRIPT] Available languages: {list(subtitles_data.keys())}")
-        
+
+            # Manual subs first, then automatic captions. The old
+            #   info.get('automatic_captions') or info.get('subtitles')
+            # silently dropped manual subs because automatic_captions is a
+            # dict listing every translatable language, so it is always
+            # truthy even when it has no real content for ko/en.
+            manual_subs = info.get('subtitles') or {}
+            auto_subs = info.get('automatic_captions') or {}
+            print(f"[TRANSCRIPT] manual langs: {list(manual_subs.keys())[:8]} | auto langs: {list(auto_subs.keys())[:8]}")
+
         transcript_text = None
         language_code = None
-        
-        # Try preferred languages in order
+
+        # Try preferred languages in order; manual subs are preferred over auto.
         for lang in ['ko', 'en']:
-            if lang not in subtitles_data or not subtitles_data[lang]:
+            candidates = (manual_subs.get(lang) or []) + (auto_subs.get(lang) or [])
+            if not candidates:
                 continue
-            
-            print(f"[TRANSCRIPT] Trying language: {lang}")
-            
+
+            print(f"[TRANSCRIPT] Trying language: {lang} ({len(candidates)} sources)")
+
             # Only try preferred formats
             preferred_formats = ['json3', 'vtt']
-            
-            for subtitle_item in subtitles_data[lang]:
+
+            for subtitle_item in candidates:
                 if not isinstance(subtitle_item, dict) or 'url' not in subtitle_item:
                     continue
                 

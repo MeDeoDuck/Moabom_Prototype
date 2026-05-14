@@ -1,23 +1,53 @@
-"""YouTube transcript fetch — cookieless on residential IP.
+"""YouTube transcript fetch — residential IP with cookie auth.
 
-Ported from scripts/youtube/transcript_service.py with two differences:
-  - No cookie path. Residential IP avoids the datacenter bot trap that forced
-    cookie auth in production. If YouTube ever starts blocking the home IP,
-    we can plug a cookie path back in here.
-  - `import requests` is included (the original module references
-    requests.exceptions.Timeout without importing requests — a latent bug
-    that we don't fix here to keep this PR scoped).
+Originally planned cookieless on residential IP, but observed timedtext
+endpoint rate-limits (HTTP 429) even from the home IP under modest traffic.
+Plugging in the production cookie file resolves the rate-limit by fetching
+as a logged-in user. Cookie source resolution (in order):
+  1. YT_COOKIES_PATH env var (when set and the file exists)
+  2. <repo>/.secrets/yt_cookies.txt (default colocated with the runtime)
+
+`automatic_captions` is a dict listing every translatable language and is
+always truthy — earlier code dropped manual subs because of `or` short-circuit.
+Order is now manual first, then auto.
 
 Returns dict {transcript_text, language_code, segment_count} or None.
 """
 from __future__ import annotations
 
 import json
+import os
 import time
+from http.cookiejar import MozillaCookieJar
 from typing import Any
 
 import requests
 import yt_dlp
+
+
+_DEFAULT_COOKIES_PATH = "/home/rtx4060ti/projects/Moabom_Prototype/.secrets/yt_cookies.txt"
+
+
+def _resolve_cookies_path() -> str | None:
+    p = os.environ.get("YT_COOKIES_PATH")
+    if p and os.path.exists(p):
+        return p
+    if os.path.exists(_DEFAULT_COOKIES_PATH):
+        return _DEFAULT_COOKIES_PATH
+    return None
+
+
+def _build_session() -> requests.Session:
+    s = requests.Session()
+    p = _resolve_cookies_path()
+    if p:
+        jar = MozillaCookieJar(p)
+        try:
+            jar.load(ignore_discard=True, ignore_expires=True)
+            s.cookies = jar  # type: ignore[assignment]
+        except Exception:
+            pass
+    return s
 
 
 def _parse_json3(content: str) -> str | None:
@@ -78,19 +108,29 @@ def fetch_transcript(video_id: str) -> dict[str, Any] | None:
         "no_warnings": True,
         "skip_download": True,
     }
+    cookie_path = _resolve_cookies_path()
+    if cookie_path:
+        ydl_opts["cookiefile"] = cookie_path
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False, process=False)
-        subtitles_data = info.get("automatic_captions") or info.get("subtitles") or {}
     except Exception:
         return None
 
-    session = requests.Session()
+    # Manual subtitles first, then automatic captions. Older code did
+    #   info.get('automatic_captions') or info.get('subtitles')
+    # which silently dropped manual subs because automatic_captions is a dict
+    # listing every translatable language, so it is always truthy even when it
+    # has no real content for the language we want.
+    manual_subs = info.get("subtitles") or {}
+    auto_subs = info.get("automatic_captions") or {}
+
+    session = _build_session()
     preferred_formats = ("json3", "vtt")
 
     for lang in ("ko", "en"):
-        items = subtitles_data.get(lang) or []
+        items = (manual_subs.get(lang) or []) + (auto_subs.get(lang) or [])
         for item in items:
             if not isinstance(item, dict) or "url" not in item:
                 continue
