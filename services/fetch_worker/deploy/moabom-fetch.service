@@ -1,0 +1,20 @@
+[Unit]
+Description=Moabom YouTube Fetch Worker (residential IP)
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=rtx4060ti
+Group=rtx4060ti
+WorkingDirectory=/home/rtx4060ti/projects/Moabom_Prototype
+EnvironmentFile=/etc/moabom-fetch.env
+ExecStart=/home/rtx4060ti/projects/Moabom_Prototype/services/fetch_worker/.venv/bin/uvicorn services.fetch_worker.app:app --host 127.0.0.1 --port 8080 --workers 1
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=moabom-fetch
+
+[Install]
+WantedBy=multi-user.target
