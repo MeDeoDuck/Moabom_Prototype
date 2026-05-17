@@ -25,6 +25,7 @@ from typing import Any, Dict, Optional, Tuple
 from scripts.reports._comment_aggregator import (
     aggregate_comparison_inputs,
     attach_comment_texts,
+    fetch_comment_texts,
     validate_report3_json,
 )
 from scripts.reports.transcript_report import (
@@ -35,7 +36,7 @@ from scripts.reports.transcript_report import (
 from scripts.utils.prompt_manager import build_comparison_report_prompt
 
 
-SCHEMA_VERSION = "v2.integrated_report.1"
+SCHEMA_VERSION = "v2.integrated_report.2"
 MAX_LLM_ATTEMPTS = 3
 
 
@@ -71,11 +72,12 @@ def build_integrated_analysis_report(
         return None
 
     aspect_summary = aggregate_comparison_inputs(video_id, product_name, transcript_report)
-    if not aspect_summary or not aspect_summary.get("common_aspects"):
-        # 공통 aspect 가 한 건도 없으면 비교 가치가 없음 → ③ 생성 보류
+    if not aspect_summary or not aspect_summary.get("all_consumer_aspects"):
+        # v2.2: ABSA aspect 자체가 0 개면 비교 가치가 없음 → ③ 생성 보류
+        # (strict 매칭이 0 이어도 semantic/text fallback 으로 ③ 생성 가능. 단 ABSA 0 이면 빈손)
         print(
-            f"[integrated_report] no common aspects between reviewer & consumer "
-            f"for video_id={video_id} → comparison report skipped"
+            f"[integrated_report] no ABSA aspects for video_id={video_id} "
+            "→ comparison report skipped"
         )
         return None
 
@@ -126,10 +128,11 @@ def build_integrated_analysis_report(
             )
             continue
 
-        # 환각 차단: consumer_comment_ids / reviewer_only / consumer_only 화이트리스트
+        # 환각 차단 (v2.2): consumer_comment_ids / reviewer_only / consumer_only /
+        # spec_changes / consumer_questions 모두 화이트리스트
         data = _filter_ids_and_lists(data, aspect_summary)
 
-        # 원문 첨부 (consumer_comment_ids → consumer_comments)
+        # 원문 첨부 #1: consumer_comment_ids → consumer_comments
         data = attach_comment_texts(
             data,
             id_paths=[
@@ -138,6 +141,9 @@ def build_integrated_analysis_report(
             ],
         )
 
+        # 원문 첨부 #2: consumer_questions[i].question_text_id → question_comment (단일 dict)
+        _attach_question_texts(data)
+
         agree = len(data.get("agreement_points", []))
         disagree = len(data.get("disagreement_points", []))
         data["_meta"] = {
@@ -145,6 +151,8 @@ def build_integrated_analysis_report(
             "product_name": product_name,
             "agreement_count": agree,
             "disagreement_count": disagree,
+            "spec_change_count": len(data.get("spec_changes", [])),
+            "consumer_question_count": len(data.get("consumer_questions", [])),
             "model_used": REPORT_LLM_DEPLOYMENT,
             "schema_version": SCHEMA_VERSION,
         }
@@ -164,30 +172,110 @@ def _filter_ids_and_lists(
     aspect_summary: Dict[str, Any],
 ) -> Dict[str, Any]:
     """
-    화이트리스트 강제:
-      - agreement/disagreement.consumer_comment_ids
-        → 해당 topic 의 common_aspects.candidate_comments 에 등장한 ID 만 허용 (각 2개 상한)
-      - reviewer_only → aspect_summary.reviewer_only_aspect_hints 안에서만 (6개 상한)
-      - consumer_only → aspect_summary.consumer_only_aspects 안에서만 (6개 상한)
+    v2.2 화이트리스트 강제 (LLM 출력 후처리):
+
+      - agreement / disagreement.consumer_comment_ids
+          → 해당 topic 의 candidate_comments 에 등장한 ID 만 허용 (각 2 개 상한)
+          → match_tier="text" 면 topic 이 aspect_name 이 아닐 수 있으므로
+             모든 candidate_comments 의 합집합으로 fallback
+      - reviewer_only → reviewer_only_aspect_hints 안에서만 (6 개 상한)
+      - consumer_only → all_consumer_aspects.aspect_name 중 agree/disagree 양쪽에서
+                        채택되지 않은 항목만 (6 개 상한)
+      - spec_changes  → spec_change_candidates 의 spec_name 화이트리스트.
+                        매칭되는 항목은 입력값 그대로 (before/after/change_text→delta)
+                        로 재구성해 LLM 수치 변조 차단 (5 개 상한)
+      - consumer_questions.question_text_id
+                      → question_candidates 의 comment_id 만 허용 (8 개 상한)
     """
+    # aspect_name → candidate_id 집합
     aspect_to_white: Dict[str, set] = {}
-    for grp in aspect_summary.get("common_aspects", []):
+    for grp in aspect_summary.get("all_consumer_aspects", []):
         aspect_to_white[grp["aspect_name"]] = {
             c["comment_id"] for c in grp.get("candidate_comments", [])
         }
+    all_ids_union: set = set().union(*aspect_to_white.values()) if aspect_to_white else set()
 
+    used_topics: set = set()
     for grp_key in ("agreement_points", "disagreement_points"):
         for item in data.get(grp_key, []):
-            topic = item.get("topic", "")
+            topic = (item.get("topic") or "").strip()
+            used_topics.add(topic)
             white = aspect_to_white.get(topic, set())
+            if not white and item.get("match_tier") == "text":
+                # tier 3: topic 이 ABSA aspect 외 자유 문구 → 모든 ID 허용
+                white = all_ids_union
             ids = item.get("consumer_comment_ids") or []
             item["consumer_comment_ids"] = [i for i in ids if i in white][:2]
 
+    # reviewer_only
     rev_white = set(aspect_summary.get("reviewer_only_aspect_hints", []))
-    cons_white = set(aspect_summary.get("consumer_only_aspects", []))
-    data["reviewer_only"] = [s for s in (data.get("reviewer_only") or []) if s in rev_white][:6]
-    data["consumer_only"] = [s for s in (data.get("consumer_only") or []) if s in cons_white][:6]
+    data["reviewer_only"] = [
+        s for s in (data.get("reviewer_only") or []) if s in rev_white
+    ][:6]
+
+    # consumer_only — all_consumer_aspects 중 S1/S2 미사용 항목
+    all_aspect_names = {a["aspect_name"] for a in aspect_summary.get("all_consumer_aspects", [])}
+    data["consumer_only"] = [
+        s for s in (data.get("consumer_only") or [])
+        if s in all_aspect_names and s not in used_topics
+    ][:6]
+
+    # spec_changes — spec_name 기준 화이트리스트 + 입력값으로 강제 재구성
+    spec_input = aspect_summary.get("spec_change_candidates", [])
+    spec_dict = {s.get("spec_name", ""): s for s in spec_input}
+    filtered_specs: List[Dict[str, str]] = []
+    for s in (data.get("spec_changes") or []):
+        name = (s.get("spec_name") or "").strip()
+        if name in spec_dict:
+            original = spec_dict[name]
+            filtered_specs.append({
+                "spec_name": original.get("spec_name", ""),
+                "before":    original.get("before", ""),
+                "after":     original.get("after", ""),
+                "delta":     original.get("change_text", ""),
+            })
+    data["spec_changes"] = filtered_specs[:5]
+
+    # consumer_questions — question_text_id 화이트리스트
+    question_white = {q["comment_id"] for q in aspect_summary.get("question_candidates", [])}
+    filtered_questions: List[Dict[str, Any]] = []
+    for q in (data.get("consumer_questions") or []):
+        qid = q.get("question_text_id")
+        if qid and qid in question_white:
+            filtered_questions.append(q)
+    data["consumer_questions"] = filtered_questions[:8]
+
+    # fallback_notes 누락/문자열 정합화
+    fn = data.get("fallback_notes")
+    if not isinstance(fn, dict):
+        data["fallback_notes"] = {"disagreement_empty_message": None, "data_scope": ""}
+    else:
+        if "disagreement_empty_message" not in fn:
+            fn["disagreement_empty_message"] = None
+        if "data_scope" not in fn:
+            fn["data_scope"] = ""
+
     return data
+
+
+def _attach_question_texts(data: Dict[str, Any]) -> None:
+    """consumer_questions 의 question_text_id 마다 comments.text_raw 원문을 매핑.
+
+    fetch_comment_texts 는 list 기반 → 단일 ID 케이스를 위해 별도 inline 처리.
+    각 question 에 question_comment={comment_id, text_raw, like_count, author_name}
+    필드를 in-place 추가. 매핑 실패하면 None.
+    """
+    questions = data.get("consumer_questions") or []
+    qids = [q["question_text_id"] for q in questions if q.get("question_text_id")]
+    if not qids:
+        return
+    text_map = fetch_comment_texts(qids)
+    for q in questions:
+        qid = q.get("question_text_id")
+        if qid in text_map:
+            q["question_comment"] = {"comment_id": qid, **text_map[qid]}
+        else:
+            q["question_comment"] = None
 
 
 # ── 통합 오케스트레이션 (videos.py 가 호출) ───────────────────

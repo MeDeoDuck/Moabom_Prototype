@@ -101,24 +101,70 @@ def _comment_report_to_text(data: dict, product_name: str = "제품") -> str:
     return "\n".join(out)
 
 
+# 보고서 ③ v2.2 메타 배지 라벨 (PDF 가독성용)
+_PDF_TIER_LABEL = {"strict": "정확 매칭", "semantic": "의미 매칭", "text": "텍스트 비교"}
+_PDF_STRENGTH_LABEL = {"strong": "근거 강함", "medium": "근거 보통", "weak": "근거 약함"}
+_PDF_GAP_LABEL = {"opposite": "정반대", "temperature_gap": "온도차"}
+
+# Option A: S2 가 빈 경우 LLM 이 안 채워도 항상 노출되는 FE/PDF default 메시지
+_PDF_DEFAULT_DISAGREE_EMPTY = (
+    "리뷰어와 소비자 의견이 대체로 일치합니다. 큰 갈등 지점이 발견되지 않았습니다."
+)
+
+
 def _comparison_report_to_text(data: dict, product_name: str = "제품") -> str:
-    """보고서 ③ dict → PDF 용 markdown 텍스트."""
+    """보고서 ③ v2.2 dict → PDF 용 markdown 텍스트 (Option A: 빈 섹션 숨김).
+
+    Option A:
+      - S2 가 빈 경우: 항상 긍정 backup 메시지 (LLM 미준수 시 FE/PDF default 사용)
+      - S4 spec_changes 가 빈 경우: 섹션 자체를 생성하지 않음 → footer 에 사유 노출
+      - S5 consumer_questions 가 빈 경우: 동일
+      - footer 에 "표시되지 않은 섹션" row 추가
+
+    v2.1 dict (구버전 캐시) 도 누락 키 graceful — S4/S5 키가 없으면 빈 배열로 간주.
+    """
     out: list = [f"# {product_name} 리뷰어 vs 소비자 비교 보고서", ""]
 
-    # S1 / S2
-    for title, key in (
-        ("## 1. 의견 일치 포인트", "agreement_points"),
-        ("## 2. 의견 불일치 포인트", "disagreement_points"),
+    # Option A: 빈 섹션을 footer 에 압축 노출하기 위한 트래킹
+    hidden_sections: list = []
+
+    # ── S1 / S2 일치·불일치 ──────────────────────────────────
+    for title, key, is_disagree in (
+        ("## 1. 의견 일치 포인트", "agreement_points", False),
+        ("## 2. 의견 불일치 포인트", "disagreement_points", True),
     ):
         out.append(title)
         items = data.get(key) or []
         if not items:
-            out.append("- 도출된 항목이 없습니다.")
+            if is_disagree:
+                # Option A: 항상 긍정 backup (LLM 미준수 시 default)
+                fn = data.get("fallback_notes") or {}
+                llm_msg = (fn.get("disagreement_empty_message") or "").strip()
+                msg = llm_msg if llm_msg else _PDF_DEFAULT_DISAGREE_EMPTY
+                out.append("> ✓ 리뷰어와 소비자 의견이 대체로 일치합니다")
+                out.append(f"> {msg}")
+            else:
+                out.append("- 도출된 항목이 없습니다.")
         else:
             for p in items:
-                topic = p.get("topic") or ""
+                topic = (p.get("topic") or "").strip()
                 quote = (p.get("reviewer_quote") or "").strip()
-                out.append(f"### {topic}")
+
+                # 메타 배지: match_tier + evidence_strength (+ gap_type for disagree)
+                meta_parts: list = []
+                tier = p.get("match_tier")
+                if tier:
+                    meta_parts.append(_PDF_TIER_LABEL.get(tier, tier))
+                strength = p.get("evidence_strength")
+                if strength:
+                    meta_parts.append(_PDF_STRENGTH_LABEL.get(strength, strength))
+                if is_disagree:
+                    gap = p.get("gap_type")
+                    if gap:
+                        meta_parts.append(_PDF_GAP_LABEL.get(gap, gap))
+                meta_suffix = f"  [{' · '.join(meta_parts)}]" if meta_parts else ""
+
+                out.append(f"### {topic}{meta_suffix}")
                 out.append(f'- 리뷰어 자막: "{quote}"')
                 out.append("- 소비자 댓글:")
                 for c in (p.get("consumer_comments") or []):
@@ -126,7 +172,7 @@ def _comparison_report_to_text(data: dict, product_name: str = "제품") -> str:
                 out.append("")
         out.append("")
 
-    # S3
+    # ── S3 reviewer_only / consumer_only ─────────────────────
     out.append("## 3. 리뷰어만 언급 / 소비자만 언급")
     out.append("[리뷰어만 언급]")
     rev_only = data.get("reviewer_only") or []
@@ -145,8 +191,54 @@ def _comparison_report_to_text(data: dict, product_name: str = "제품") -> str:
         out.append("- 없음")
     out.append("")
 
-    # S4
-    out.append("## 4. 종합 판단")
+    # ── S4 핵심 스펙 변화 (Option A: 빈 시 섹션 숨김) ─────────
+    specs = data.get("spec_changes") or []
+    if specs:
+        out.append("## 4. 핵심 스펙 변화")
+        for s in specs:
+            name = (s.get("spec_name") or "").strip()
+            before = (s.get("before") or "").strip()
+            after = (s.get("after") or "").strip()
+            delta = (s.get("delta") or "").strip()
+            line = f"- {name}: {before} → {after}"
+            if delta:
+                line += f" ({delta})"
+            out.append(line)
+        out.append("")
+    else:
+        hidden_sections.append(("S4", "핵심 스펙 변화", "자막에 전작 비교 표가 없음"))
+
+    # ── S5 소비자 질문 (Option A: 빈 시 섹션 숨김) ───────────
+    questions = data.get("consumer_questions") or []
+    rendered_questions = 0
+    if questions:
+        out.append("## 5. 소비자가 가장 궁금해하는 질문")
+        for q in questions:
+            qc = q.get("question_comment") or {}
+            q_text = (qc.get("text_raw") or "").strip()
+            similar = q.get("similar_count", 1) or 1
+            short = q.get("short_answer")
+            short_str = (short or "").strip() if isinstance(short, str) else ""
+            if not q_text:
+                continue
+            out.append(f"### Q. {q_text}  (유사 질문 {similar}건)")
+            if short_str:
+                out.append(f"> {short_str}")
+            else:
+                out.append("> 리뷰에서 다뤄지지 않음")
+            out.append("")
+            rendered_questions += 1
+        if rendered_questions == 0:
+            # question_comment.text_raw 가 모두 비어있던 edge case → 섹션 헤더만 노출됐으니
+            # 빈 통지로 보완하고 footer 트래킹에도 추가
+            out.append("- 댓글에서 추출된 질문 없음")
+            out.append("")
+            hidden_sections.append(("S5", "소비자 질문", "QUESTION 라벨 댓글 없음"))
+    else:
+        hidden_sections.append(("S5", "소비자 질문", "QUESTION 라벨 댓글 없음"))
+
+    # ── S6 종합 판단 (기존 S4 이동 + 메타 확장) ──────────────
+    out.append("## 6. 종합 판단")
     verdict = data.get("verdict") or {}
     meta = data.get("_meta") or {}
     out.append(f"리뷰 신뢰도: {verdict.get('trust_score', 0)}%")
@@ -157,7 +249,27 @@ def _comparison_report_to_text(data: dict, product_name: str = "제품") -> str:
         out.append("")
     agree = meta.get("agreement_count", 0)
     dis = meta.get("disagreement_count", 0)
-    out.append(f"(계산 근거: 일치 {agree}건 / 불일치 {dis}건)")
+    spec_n = meta.get("spec_change_count", len(specs))
+    q_n = meta.get("consumer_question_count", len(questions))
+    out.append(
+        f"(계산 근거: 일치 {agree}건 / 불일치 {dis}건 / "
+        f"스펙 변화 {spec_n}건 / 소비자 질문 {q_n}건)"
+    )
+
+    # ── footer: data_scope + 표시되지 않은 섹션 (Option A) ────
+    fn = data.get("fallback_notes") or {}
+    data_scope = (fn.get("data_scope") or "").strip()
+    if data_scope or hidden_sections:
+        out.append("")
+        out.append("---")
+        if data_scope:
+            out.append(f"데이터 범위: {data_scope}")
+        if hidden_sections:
+            items = " · ".join(
+                f"{tag} {label} — {reason}" for tag, label, reason in hidden_sections
+            )
+            out.append(f"표시되지 않은 섹션: {items}")
+
     return "\n".join(out)
 
 

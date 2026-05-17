@@ -940,6 +940,203 @@
             font-variant-numeric: tabular-nums;
         }
 
+        /* ────────────────────────────────────────────────────────────────────
+           보고서 ③ v2.2 — 6 섹션 확장 (match_tier / evidence_strength / gap_type
+           배지 + S4 spec_changes + S5 consumer_questions + fallback_notes)
+           ──────────────────────────────────────────────────────────────────── */
+
+        /* 메타 배지 (cmp-card-header 우측에 그룹 노출) */
+        .cmp-card-meta {
+            display: inline-flex; gap: 6px; flex-wrap: wrap; align-items: center;
+            margin-left: auto;
+        }
+        .cmp-meta-badge {
+            display: inline-flex; align-items: center; gap: 3px;
+            padding: 2px 8px; border-radius: 999px;
+            font-size: 11px; font-weight: 700; letter-spacing: 0.01em;
+            line-height: 1.45; white-space: nowrap;
+            border: 1px solid transparent;
+        }
+        /* match_tier */
+        .cmp-meta-badge.tier-strict {
+            background: var(--primary-soft); color: var(--primary-strong);
+            border-color: #ddd2f5;
+        }
+        .cmp-meta-badge.tier-semantic {
+            background: var(--surface); color: var(--primary);
+            border-color: var(--primary); border-style: dashed;
+        }
+        .cmp-meta-badge.tier-text {
+            background: var(--border-soft); color: var(--muted);
+        }
+        /* evidence_strength */
+        .cmp-meta-badge.strength-strong {
+            background: var(--positive-soft); color: #0d6e4f;
+            border-color: #c5f0de;
+        }
+        .cmp-meta-badge.strength-medium {
+            background: var(--neutral-soft); color: #8a5a00;
+            border-color: #fbe1ad;
+        }
+        .cmp-meta-badge.strength-weak {
+            background: var(--border-soft); color: var(--muted);
+        }
+        /* gap_type (S2 only) */
+        .cmp-meta-badge.gap-opposite {
+            background: var(--negative-soft); color: #b3303c;
+            border-color: #f7c2c8;
+        }
+        .cmp-meta-badge.gap-temperature_gap {
+            background: #fef0d8; color: #b07008;
+            border-color: #fbe1ad;
+        }
+
+        /* S2 빈 상태 — 긍정형 카드 (대체로 일치) */
+        .cmp-empty-positive {
+            background: var(--positive-soft);
+            border: 1px solid #c5f0de;
+            border-left: 4px solid var(--positive);
+            border-radius: 12px;
+            padding: 14px 18px;
+            display: flex; flex-direction: column; gap: 6px;
+        }
+        .cmp-empty-positive-headline {
+            font-size: 14.5px; font-weight: 700; color: #0d6e4f;
+            display: inline-flex; align-items: center; gap: 6px;
+        }
+        .cmp-empty-positive-body {
+            font-size: 13px; line-height: 1.55; color: var(--text);
+        }
+
+        /* ── ③ S4 핵심 스펙 변화 (.tr-change-card 와 별도, row 기반) ───── */
+        .cmp-specs {
+            display: flex; flex-direction: column; gap: 8px;
+        }
+        .cmp-spec-row {
+            display: grid;
+            grid-template-columns: 1fr auto auto;
+            align-items: center;
+            gap: 14px;
+            padding: 12px 16px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            transition: box-shadow 0.15s, border-color 0.15s;
+        }
+        .cmp-spec-row:hover { box-shadow: var(--shadow); }
+        .cmp-spec-name {
+            font-size: 14px; font-weight: 700; color: var(--text);
+            letter-spacing: -0.01em;
+        }
+        .cmp-spec-flow {
+            display: inline-flex; align-items: center; gap: 6px;
+            font-size: 13px;
+            font-variant-numeric: tabular-nums;
+        }
+        .cmp-spec-before {
+            padding: 3px 9px; border-radius: 6px;
+            background: var(--border-soft); color: var(--muted);
+            font-weight: 600;
+        }
+        .cmp-spec-arrow { color: var(--primary); font-weight: 800; }
+        .cmp-spec-after {
+            padding: 3px 9px; border-radius: 6px;
+            background: var(--primary-soft); color: var(--primary-strong);
+            font-weight: 700;
+        }
+        .cmp-spec-delta {
+            font-size: 13px; font-weight: 800;
+            color: var(--positive);
+            font-variant-numeric: tabular-nums;
+            white-space: nowrap;
+            padding: 3px 9px; border-radius: 6px;
+            background: var(--positive-soft);
+        }
+        .cmp-spec-delta.neg { color: #b3303c; background: var(--negative-soft); }
+        .cmp-spec-delta.flat { color: #8a5a00; background: var(--neutral-soft); }
+
+        /* ── ③ S5 소비자 질문 ────────────────────────────── */
+        .cmp-questions {
+            display: flex; flex-direction: column; gap: 10px;
+        }
+        .cmp-question-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-left: 4px solid var(--primary);
+            border-radius: 12px;
+            padding: 14px 16px;
+            transition: box-shadow 0.15s;
+        }
+        .cmp-question-card:hover { box-shadow: var(--shadow); }
+        .cmp-question-header {
+            display: flex; align-items: flex-start; gap: 12px;
+        }
+        .cmp-question-icon {
+            flex-shrink: 0;
+            width: 32px; height: 32px;
+            border-radius: 8px;
+            background: linear-gradient(135deg, var(--primary), var(--primary-strong));
+            color: #fff;
+            display: grid; place-items: center;
+            font-size: 16px; font-weight: 800;
+            letter-spacing: -0.02em;
+        }
+        .cmp-question-body { flex: 1; min-width: 0; }
+        .cmp-question-similar {
+            flex-shrink: 0;
+            font-size: 11.5px; color: var(--muted); font-weight: 600;
+            font-variant-numeric: tabular-nums;
+            padding: 3px 9px; border-radius: 999px;
+            background: var(--border-soft);
+            white-space: nowrap; align-self: flex-start;
+        }
+        .cmp-question-answer {
+            margin-top: 10px;
+            padding: 8px 12px;
+            background: var(--surface-soft);
+            border-left: 2px solid var(--border);
+            border-radius: 6px;
+            font-size: 13px; line-height: 1.55;
+        }
+        .cmp-question-answer.has-answer {
+            border-left-color: var(--primary);
+            color: var(--text);
+        }
+        .cmp-question-answer.no-answer {
+            color: var(--muted); font-style: italic;
+        }
+        .cmp-question-answer-label {
+            font-size: 10.5px; font-weight: 700; color: var(--muted);
+            letter-spacing: 0.04em; margin-right: 6px;
+            text-transform: uppercase;
+        }
+
+        /* ── ③ 데이터 범위 + 숨겨진 섹션 footer ─────────────── */
+        .cmp-data-scope {
+            margin-top: 14px;
+            padding: 12px 14px;
+            background: var(--surface-soft);
+            border: 1px dashed var(--border);
+            border-radius: 10px;
+            font-size: 12px; color: var(--muted);
+            line-height: 1.55;
+            display: flex; flex-direction: column; gap: 6px;
+        }
+        .cmp-data-scope-row {
+            display: flex; align-items: flex-start; gap: 8px;
+        }
+        .cmp-data-scope-label {
+            flex-shrink: 0;
+            font-weight: 700; color: var(--primary-strong);
+            white-space: nowrap;
+        }
+        .cmp-data-scope-row.hidden-sections .cmp-data-scope-label {
+            color: var(--muted);
+        }
+        .cmp-data-scope-row strong {
+            color: var(--text); font-weight: 700;
+        }
+
         /* ── 빈 상태 + 로딩 ────────────────────────────────── */
         .cm-loading, .cmp-loading {
             color: var(--muted); font-size: 13px;
@@ -953,6 +1150,8 @@
             .cmp-verdict-gauge { width: 100%; }
             .cm-mood-bar-row   { grid-template-columns: 48px 1fr 56px; }
             .cm-issues         { grid-template-columns: repeat(3, 1fr); }
+            .cmp-spec-row      { grid-template-columns: 1fr; gap: 8px; }
+            .cmp-card-meta     { margin-left: 0; margin-top: 4px; }
         }
         @media (max-width: 480px) {
             .cm-issues { grid-template-columns: repeat(2, 1fr); }
@@ -1870,33 +2069,119 @@
                 '<div class="cm-issues">' + cells + '</div>';
         }
 
-        // ── 보고서 ③ 렌더러 ──────────────────────────────────────
+        // ── 보고서 ③ v2.2 — 6 섹션 렌더러 (Option A: 빈 섹션 숨김 + footer 노트) ──
+        // S1 일치 / S2 불일치(항상 표시 - 빈 시 긍정 backup) /
+        // S3 reviewer_only·consumer_only / S4 핵심 스펙 변화 (빈 시 숨김) /
+        // S5 소비자 질문 (빈 시 숨김) / S6 종합 판단
+        // + footer: data_scope + 숨겨진 섹션 목록
         function enhanceComparisonReport(rootEl, data) {
             if (!rootEl) return;
             if (!data) {
                 rootEl.innerHTML = '<div class="empty-report">렌더링할 데이터가 없습니다.</div>';
                 return;
             }
+            const fn = data.fallback_notes || {};
+            const specs = data.spec_changes || [];
+            const questions = data.consumer_questions || [];
+
+            // Option A: 비어있는 S4/S5 를 추적하여 footer 로 압축 노출
+            const hiddenSections = [];
+            if (specs.length === 0) {
+                hiddenSections.push({
+                    tag: 'S4', label: '핵심 스펙 변화',
+                    reason: '자막에 전작 비교 표가 없음',
+                });
+            }
+            if (questions.length === 0) {
+                hiddenSections.push({
+                    tag: 'S5', label: '소비자 질문',
+                    reason: 'QUESTION 라벨 댓글 없음',
+                });
+            }
+
             const parts = [];
             parts.push(_cmpRenderS1(data.agreement_points));
-            parts.push(_cmpRenderS2(data.disagreement_points));
+            parts.push(_cmpRenderS2(data.disagreement_points, fn));
             parts.push(_cmpRenderS3(data.reviewer_only, data.consumer_only));
-            parts.push(_cmpRenderS4(data.verdict, data._meta));
+            parts.push(_cmpRenderS4(specs));        // '' if empty
+            parts.push(_cmpRenderS5(questions));    // '' if empty
+            parts.push(_cmpRenderS6(data.verdict, data._meta, specs, questions));
+            parts.push(_cmpRenderDataScope(fn.data_scope, hiddenSections));
             rootEl.innerHTML = parts.join('');
             _cmBindQuoteToggles(rootEl);
         }
 
+        // S2 가 빈 경우 LLM 이 fallback_notes 를 안 채워도 항상 노출되는 FE default 메시지
+        const _CMP_DEFAULT_DISAGREE_EMPTY =
+            '리뷰어와 소비자 의견이 대체로 일치합니다. 큰 갈등 지점이 발견되지 않았습니다.';
+
+        // ── 메타 배지 라벨 / 클래스 ──────────────────────────────
+        const _CMP_TIER_LABEL = {
+            strict:   '🎯 정확 매칭',
+            semantic: '🔗 의미 매칭',
+            text:     '📝 텍스트 비교',
+        };
+        const _CMP_STRENGTH_LABEL = {
+            strong: '근거 강함',
+            medium: '근거 보통',
+            weak:   '근거 약함',
+        };
+        const _CMP_GAP_LABEL = {
+            opposite:        '정반대',
+            temperature_gap: '온도차',
+        };
+
+        function _cmpMetaBadgesHtml(p, isDisagree) {
+            const out = [];
+            if (p.match_tier && _CMP_TIER_LABEL[p.match_tier]) {
+                out.push('<span class="cmp-meta-badge tier-' + p.match_tier + '">'
+                    + _CMP_TIER_LABEL[p.match_tier] + '</span>');
+            }
+            if (p.evidence_strength && _CMP_STRENGTH_LABEL[p.evidence_strength]) {
+                out.push('<span class="cmp-meta-badge strength-' + p.evidence_strength + '">'
+                    + _CMP_STRENGTH_LABEL[p.evidence_strength] + '</span>');
+            }
+            if (isDisagree && p.gap_type && _CMP_GAP_LABEL[p.gap_type]) {
+                out.push('<span class="cmp-meta-badge gap-' + p.gap_type + '">'
+                    + _CMP_GAP_LABEL[p.gap_type] + '</span>');
+            }
+            if (!out.length) return '';
+            return '<div class="cmp-card-meta">' + out.join('') + '</div>';
+        }
+
+        // ── S1 / S2 일치 / 불일치 카드 (메타 배지 포함) ──────────
         function _cmpRenderS1(points) {
             return '<h3 class="cmp-section-title">1. 의견 일치 포인트</h3>' +
-                '<div class="cmp-section-intro">리뷰어도 소비자도 동의하는 부분 = 가장 신뢰도 높은 정보. ' +
-                '각 카드는 리뷰어 자막 발췌 + 소비자 댓글 원문을 좌우로 배치.</div>' +
+                '<div class="cmp-section-intro">리뷰어도 소비자도 동의하는 항목 = 가장 신뢰도 높은 정보. ' +
+                '3 단계 fallback 매칭 (strict → semantic → text) 으로 빈약 출력을 방지. ' +
+                '각 카드는 리뷰어 자막 발췌 + 소비자 댓글 원문 좌우 배치 + 매칭 단계·근거 강도 배지.</div>' +
                 _cmpRenderCards(points || [], 'agree');
         }
-        function _cmpRenderS2(points) {
-            return '<h3 class="cmp-section-title">2. 의견 불일치 포인트</h3>' +
-                '<div class="cmp-section-intro">리뷰어↔소비자 평가가 다른 항목 — 구매 결정 시 가장 면밀히 확인해야 할 지점.</div>' +
-                _cmpRenderCards(points || [], 'disagree');
+
+        function _cmpRenderS2(points, fallbackNotes) {
+            const intro = '<div class="cmp-section-intro">리뷰어↔소비자 평가가 다른 항목. ' +
+                '"명확한 반대" + "온도차" 까지 포함. 비었을 경우 backup — 공백 대신 ' +
+                '"대체로 일치" 긍정 결론으로 채움.</div>';
+            const items = points || [];
+            if (items.length === 0) {
+                // Option A: LLM 이 메시지를 안 채워도 항상 긍정 backup 카드를 노출.
+                // FE default 로 fallback 해 "도출되지 않았습니다" bland 메시지는 절대 표시하지 않음.
+                const llmMsg = (fallbackNotes && fallbackNotes.disagreement_empty_message) || '';
+                const msg = (typeof llmMsg === 'string' && llmMsg.trim())
+                    ? llmMsg.trim()
+                    : _CMP_DEFAULT_DISAGREE_EMPTY;
+                return '<h3 class="cmp-section-title">2. 의견 불일치 포인트</h3>' + intro +
+                    '<div class="cmp-empty-positive">' +
+                        '<div class="cmp-empty-positive-headline">' +
+                            '✓ 리뷰어와 소비자 의견이 대체로 일치합니다' +
+                        '</div>' +
+                        '<div class="cmp-empty-positive-body">' + _cmEsc(msg) + '</div>' +
+                    '</div>';
+            }
+            return '<h3 class="cmp-section-title">2. 의견 불일치 포인트</h3>' + intro +
+                _cmpRenderCards(items, 'disagree');
         }
+
         function _cmpRenderCards(points, kind) {
             if (!points.length) {
                 const msg = (kind === 'agree') ? '일치 항목이 도출되지 않았습니다.' : '불일치 항목이 도출되지 않았습니다.';
@@ -1907,10 +2192,12 @@
             '</div>';
         }
         function _cmpRenderCard(p, kind) {
-            const badge = (kind === 'agree') ? '✓ 일치' : '✕ 불일치';
+            const isDisagree = (kind === 'disagree');
+            const badge = isDisagree ? '✕ 불일치' : '✓ 일치';
             const topic = p.topic || '';
             const quote = p.reviewer_quote || '';
-            const quoteKind = (kind === 'agree') ? 'pos' : 'neg';
+            const quoteKind = isDisagree ? 'neg' : 'pos';
+            const metaBadges = _cmpMetaBadgesHtml(p, isDisagree);
             const consumerComments = (p.consumer_comments || [])
                 .map(c => _cmRenderQuote(c, quoteKind))
                 .join('');
@@ -1929,11 +2216,13 @@
                     '<div class="cmp-card-header">' +
                         '<span class="cmp-card-badge ' + kind + '">' + badge + '</span>' +
                         '<span class="cmp-card-topic">' + _cmEsc(topic) + '</span>' +
+                        metaBadges +
                     '</div>' +
                     '<div class="cmp-evidence-grid">' + reviewerSide + consumerSide + '</div>' +
                 '</div>';
         }
 
+        // ── S3 reviewer_only / consumer_only (변경 없음) ────────
         function _cmpRenderS3(reviewerOnly, consumerOnly) {
             const rev = reviewerOnly || [];
             const con = consumerOnly || [];
@@ -1945,7 +2234,7 @@
                 : '<li class="empty">없음</li>';
             return '<h3 class="cmp-section-title">3. 리뷰어만 언급 vs 소비자만 언급</h3>' +
                 '<div class="cmp-section-intro">한쪽만 다룬 주제 — 리뷰어는 전문 포인트(벤치마크 등), ' +
-                '소비자는 실사용 이슈(AS·내구성 등)를 주로 다룸. 각각 고유 가치.</div>' +
+                '소비자는 실사용 이슈(AS·내구성 등). 각 칼럼에 항목 여러 개. 각각 고유 가치.</div>' +
                 '<div class="cmp-only-grid">' +
                     '<div class="cmp-only-col">' +
                         '<div class="cmp-only-header reviewer">📝 리뷰어만 언급</div>' +
@@ -1958,9 +2247,96 @@
                 '</div>';
         }
 
-        function _cmpRenderS4(verdict, meta) {
+        // ── S4 핵심 스펙 변화 (v2.2 신규) ────────────────────────
+        function _cmpDeltaSign(delta) {
+            const s = String(delta || '');
+            if (/^-|↓|감소|하락/.test(s)) return 'neg';
+            if (/유지|동일/.test(s)) return 'flat';
+            return '';   // default = pos (green)
+        }
+        function _cmpRenderS4(specs) {
+            const items = specs || [];
+            // Option A: 비어있으면 섹션 자체를 그리지 않음 (footer 의 hiddenSections 가 사유 노출)
+            if (items.length === 0) return '';
+            const intro = '<div class="cmp-section-intro">자막에서 추출된 정량 스펙 변화를 한 줄 카드로 표시. ' +
+                '본문에 묻혀 있던 수치 (12MP→48MP 등) 를 끌어올림. 보고서 ①의 전작 비교 표를 파싱해 생성.</div>';
+            const rows = items.map(s => {
+                const name = s.spec_name || '';
+                const before = s.before || '';
+                const after = s.after || '';
+                const delta = s.delta || '';
+                const deltaCls = _cmpDeltaSign(delta);
+                return '<div class="cmp-spec-row">' +
+                        '<div class="cmp-spec-name">' + _cmEsc(name) + '</div>' +
+                        '<div class="cmp-spec-flow">' +
+                            '<span class="cmp-spec-before">' + _cmEsc(before) + '</span>' +
+                            '<span class="cmp-spec-arrow">→</span>' +
+                            '<span class="cmp-spec-after">' + _cmEsc(after) + '</span>' +
+                        '</div>' +
+                        (delta
+                            ? '<div class="cmp-spec-delta ' + deltaCls + '">' + _cmEsc(delta) + '</div>'
+                            : '<div></div>')
+                    + '</div>';
+            }).join('');
+            return '<h3 class="cmp-section-title">4. 핵심 스펙 변화 요약</h3>' + intro +
+                '<div class="cmp-specs">' + rows + '</div>';
+        }
+
+        // ── S5 소비자 질문 (v2.2 신규) ───────────────────────────
+        function _cmpRenderS5(questions) {
+            const items = questions || [];
+            // Option A: 비어있으면 섹션 자체를 그리지 않음 (footer 가 사유 노출)
+            if (items.length === 0) return '';
+            const intro = '<div class="cmp-section-intro">지금까지 묻혀있던 ' +
+                '<code>llm_classifications.QUESTION</code> 라벨 댓글 활용. ' +
+                '소비자가 실제로 던진 질문을 유사 질문끼리 묶어 노출 → 구매 전 사용자 공감.</div>';
+            const cards = items.map((q, i) => {
+                const qc = q.question_comment || {};
+                const qText = qc.text_raw || '';
+                const author = qc.author_name || '';
+                const likes = qc.like_count || 0;
+                const similar = q.similar_count || 1;
+                const short = q.short_answer;
+                const qid = 'cmpQ_' + i;
+                const hasAnswer = (typeof short === 'string' && short.trim().length > 0);
+                const answerHtml = hasAnswer
+                    ? '<div class="cmp-question-answer has-answer">' +
+                        '<span class="cmp-question-answer-label">자막·댓글 근거</span>' +
+                        _cmEsc(short.trim()) +
+                      '</div>'
+                    : '<div class="cmp-question-answer no-answer">' +
+                        '<span class="cmp-question-answer-label">답변</span>' +
+                        '리뷰에서 다뤄지지 않음' +
+                      '</div>';
+                if (!qText) return '';
+                return '<div class="cmp-question-card">' +
+                        '<div class="cmp-question-header">' +
+                            '<div class="cmp-question-icon">Q</div>' +
+                            '<div class="cmp-question-body">' +
+                                '<div class="cm-quote-text" id="' + qid + '">' +
+                                    _cmEsc(qText) +
+                                '</div>' +
+                                '<div class="cm-quote-meta">' +
+                                    '<span class="cm-quote-like">👍 ' + likes + '</span>' +
+                                    (author ? '<span>' + _cmEsc(author) + '</span>' : '') +
+                                    '<span class="cm-quote-source">원문 그대로</span>' +
+                                    '<button type="button" class="cm-quote-toggle" ' +
+                                            'data-target="' + qid + '" style="display:none;">더보기</button>' +
+                                '</div>' +
+                            '</div>' +
+                            '<div class="cmp-question-similar">유사 질문 ' + similar + '건</div>' +
+                        '</div>' +
+                        answerHtml +
+                    '</div>';
+            }).join('');
+            return '<h3 class="cmp-section-title">5. 소비자가 가장 궁금해하는 질문</h3>' + intro +
+                '<div class="cmp-questions">' + cards + '</div>';
+        }
+
+        // ── S6 종합 판단 (이전 S4 이동 + 메타 확장) ──────────────
+        function _cmpRenderS6(verdict, meta, specs, questions) {
             if (!verdict) {
-                return '<h3 class="cmp-section-title">4. 종합 판단</h3>' +
+                return '<h3 class="cmp-section-title">6. 종합 판단</h3>' +
                     '<div class="empty-report" style="font-size:13px;padding:14px;">종합 판단 데이터가 없습니다.</div>';
             }
             const score = _cmClamp(parseInt(verdict.trust_score, 10) || 0, 0, 100);
@@ -1970,10 +2346,13 @@
             const headline = (cls === 'high') ? '리뷰어 의견을 대체로 신뢰할 만합니다'
                           : (cls === 'mid')  ? '일부 항목은 실사용 후기 추가 확인이 필요합니다'
                           : '불일치 항목이 많아 신중히 판단하세요';
-            const agree = (meta && typeof meta.agreement_count === 'number') ? meta.agreement_count : 0;
-            const disagree = (meta && typeof meta.disagreement_count === 'number') ? meta.disagreement_count : 0;
-            return '<h3 class="cmp-section-title">4. 종합 판단</h3>' +
-                '<div class="cmp-section-intro">리뷰 신뢰도 + 구매 시 주의점 2~3줄. 사용자 최종 의사결정 보조.</div>' +
+            const agree    = (meta && typeof meta.agreement_count          === 'number') ? meta.agreement_count          : 0;
+            const disagree = (meta && typeof meta.disagreement_count       === 'number') ? meta.disagreement_count       : 0;
+            const specN    = (meta && typeof meta.spec_change_count        === 'number') ? meta.spec_change_count        : (specs || []).length;
+            const qN       = (meta && typeof meta.consumer_question_count  === 'number') ? meta.consumer_question_count  : (questions || []).length;
+            return '<h3 class="cmp-section-title">6. 종합 판단</h3>' +
+                '<div class="cmp-section-intro">리뷰 신뢰도 + 구매 시 주의점 2~3 줄. ' +
+                '보고서의 결론이므로 맨 뒤로 배치 (마무리 역할).</div>' +
                 '<div class="cmp-verdict">' +
                     '<div class="cmp-verdict-gauge">' +
                         '<div class="cmp-verdict-gauge-pct ' + pctCls + '">' + score + '%</div>' +
@@ -1985,9 +2364,40 @@
                     '<div class="cmp-verdict-body">' +
                         '<div class="cmp-verdict-headline">' + _cmEsc(headline) + '</div>' +
                         '<div class="cmp-verdict-summary">' + _cmEsc(summary) + '</div>' +
-                        '<div class="cmp-verdict-meta">계산 근거: 일치 ' + agree + '건 / 불일치 ' + disagree + '건</div>' +
+                        '<div class="cmp-verdict-meta">계산 근거: 일치 ' + agree + '건 / 불일치 ' + disagree +
+                            '건 / 스펙 변화 ' + specN + '건 / 소비자 질문 ' + qN + '건</div>' +
                     '</div>' +
                 '</div>';
+        }
+
+        // ── fallback_notes.data_scope + 숨겨진 섹션 footer (Option A) ─────
+        // hiddenSections: [{tag, label, reason}, ...] — 빈 배열이면 해당 row 생략
+        function _cmpRenderDataScope(scopeText, hiddenSections) {
+            const s = (scopeText || '').trim();
+            const hidden = hiddenSections || [];
+            if (!s && hidden.length === 0) return '';
+            const rows = [];
+            if (s) {
+                rows.push(
+                    '<div class="cmp-data-scope-row">' +
+                        '<span class="cmp-data-scope-label">📊 데이터 범위</span>' +
+                        '<span>' + _cmEsc(s) + '</span>' +
+                    '</div>'
+                );
+            }
+            if (hidden.length > 0) {
+                const items = hidden.map(h =>
+                    _cmEsc(h.tag) + ' <strong>' + _cmEsc(h.label) + '</strong> — ' +
+                    _cmEsc(h.reason)
+                ).join(' &nbsp;·&nbsp; ');
+                rows.push(
+                    '<div class="cmp-data-scope-row hidden-sections">' +
+                        '<span class="cmp-data-scope-label">⊘ 표시되지 않은 섹션</span>' +
+                        '<span>' + items + '</span>' +
+                    '</div>'
+                );
+            }
+            return '<div class="cmp-data-scope">' + rows.join('') + '</div>';
         }
 
         document.addEventListener('DOMContentLoaded', function () {
