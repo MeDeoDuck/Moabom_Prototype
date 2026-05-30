@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 
-POLICY_VERSION = "v1.0.0-skeleton"
+POLICY_VERSION = "v1.1.0-observability"
 
 
 @dataclass
@@ -33,6 +33,13 @@ class ScoringWeights:
         }
 
 
+@dataclass(frozen=True)
+class FloorThresholds:
+    """후보 품질 하한 (관찰용. PR #1에서는 미적용 — 통과 여부만 기록)."""
+    relevance: float = 0.25
+    duration_seconds: int = 120
+
+
 @dataclass
 class SelectionPolicyConfig:
     """FR-005/FR-022 정책 상수 묶음."""
@@ -43,6 +50,7 @@ class SelectionPolicyConfig:
     mega_tier_ratio_cap: float = 0.40
     small_or_below_min_ratio: float = 0.20
     weights: ScoringWeights = field(default_factory=ScoringWeights)
+    floors: FloorThresholds = field(default_factory=FloorThresholds)
     policy_version: str = POLICY_VERSION
 
     def clamp_k(self, k: int) -> int:

@@ -16,6 +16,7 @@ from video_selection_agent.core.models import (
 from video_selection_agent.core.policy import SelectionPolicyConfig
 from video_selection_agent.graph.builder import build_graph
 from video_selection_agent.graph.state import SelectionState
+from video_selection_agent.llm.azure_openai_client import AzureOpenAIConfig
 
 
 class VideoSelectionAgent:
@@ -29,10 +30,10 @@ class VideoSelectionAgent:
     def __init__(
         self,
         policy: SelectionPolicyConfig | None = None,
-        model_name: str = "gpt-4.1-mini",
+        model_name: str | None = None,
     ):
         self.policy = policy or SelectionPolicyConfig()
-        self.model_name = model_name
+        self.model_name = model_name or AzureOpenAIConfig.from_env().model
         self._graph = build_graph()
 
     def select(

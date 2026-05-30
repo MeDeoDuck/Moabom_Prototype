@@ -48,6 +48,11 @@ class ScoreBreakdown:
     """영상 1개에 대한 정량 점수 + LLM rationale.
 
     UI/DB에 그대로 노출되어 XAI 패널·`video_selection_scores` 테이블을 채움.
+
+    PR #1 관찰 필드 (`floor_pass`, `review_scope`, `review_scope_confidence`)는
+    동작에 영향을 주지 않고 dimensions_json 에 underscore-prefix 키로 저장된다
+    (`_floor_pass_relevance`, `_floor_pass_duration`, `_review_scope`,
+    `_review_scope_confidence`). evaluation 모듈이 이 키를 읽어 지표를 산출한다.
     """
     video_id: str
     final_score: float
@@ -58,6 +63,10 @@ class ScoreBreakdown:
     llm_rationale_short: str = ""
     llm_rationale_full: str = ""
     selection_reasons: list[str] = field(default_factory=list)
+    # 관찰 필드 — 동작에 영향 없음, 다음 PR에서 hard filter / LLM 검증에 사용
+    floor_pass: dict[str, bool] = field(default_factory=dict)
+    review_scope: str = "unknown"
+    review_scope_confidence: float = 0.0
 
 
 @dataclass

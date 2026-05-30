@@ -275,7 +275,15 @@ def register_selection_routes(app: FastAPI) -> None:
         all_scores = {
             vid: {
                 "final_score": float(sb.final_score),
-                "dimensions": sb.dimensions,
+                # PR #1 관찰 필드를 underscore-prefix 키로 dimensions_json 에 병합
+                # — evaluation 모듈이 `_floor_pass_*`, `_review_scope*` 키를 읽는다.
+                "dimensions": {
+                    **sb.dimensions,
+                    "_floor_pass_relevance": sb.floor_pass.get("relevance", False),
+                    "_floor_pass_duration": sb.floor_pass.get("duration", False),
+                    "_review_scope": sb.review_scope,
+                    "_review_scope_confidence": sb.review_scope_confidence,
+                },
                 "tier": sb.tier,
                 "rank": sb.rank,
                 "rationale_short": sb.llm_rationale_short,
