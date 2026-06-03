@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
+      feature/insight-supervisor
       "Bash(python -c ' *)"
+=======
+      "Bash(pip freeze *)"
+      main
     ]
   }
 }
