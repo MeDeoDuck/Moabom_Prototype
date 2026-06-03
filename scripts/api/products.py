@@ -27,6 +27,7 @@ from scripts.reports.product_integrated_insight import (
 )
 from scripts.api.suggest import suggest as suggest_products
 from scripts.utils.markdown_renderer import markdown_to_html
+from orchestrator import run_insight_supervisor
 
 templates = Jinja2Templates(directory="templates")
 
@@ -360,68 +361,44 @@ def register_product_routes(app):
 
         route_t0 = perf_counter()
 
-        # ── self-healing ──────────────────────────────────────────────
-        # Phase 2-a ON: 댓글 agent self-heal 을 먼저(②③ 이 comment_sentiments
-        #   에 의존) → ensure_all_reports_for_product 가 ①②③ 보장+수집.
-        #   collect_transcript_reports_for_product 는 부분 upsert 로 ②③ 을
-        #   NULL 로 덮으므로 ON 경로에서 호출하지 않는다(중복 ① build 도 방지).
-        # OFF: Phase 2-a 이전과 정확히 동일 — 자막 ① + 댓글 agent 를 병렬.
-        collect_t0 = perf_counter()
-        if REPORT4_INPUT_EXPANSION:
-            comment_heal_stats = await ensure_comment_analysis_for_videos(
-                product["name"], video_ids
-            )
-            per_video_reports = await ensure_all_reports_for_product(
-                product_id, product["name"], video_ids
-            )
-        else:
-            per_video_reports, comment_heal_stats = await asyncio.gather(
-                collect_transcript_reports_for_product(product_id, video_ids),
-                ensure_comment_analysis_for_videos(product["name"], video_ids),
-            )
-        collect_ms = (perf_counter() - collect_t0) * 1000
+        # ── Supervisor 오케스트레이션 (orchestrator/) ───────────────────
+        # 기존 self-healing 함수(자막 ①·댓글 agent·①②③ 보장)와 build/save 를
+        # LangGraph Supervisor 그래프가 지휘한다. 캐시·fetch 판단은 단일 Freshness
+        # 정책으로 통합되며, 동일 조합 + 입력 전부 신선 시 기존 ④ 를 즉시 반환한다
+        # (force=true 면 강제 재생성). 기존 함수 내부·YouTube API 는 일절 수정 안 함.
+        result = await run_insight_supervisor(
+            product_id=product_id,
+            product_name=product["name"],
+            video_ids=video_ids,
+            selected_video_count=len(video_ids),
+            force=bool((data or {}).get("force", False)),
+        )
 
-        if len(per_video_reports) < 2:
+        if result.get("error") == "insufficient_reports":
             raise HTTPException(
                 status_code=400,
                 detail="자막 기반 보고서를 생성할 수 있는 영상이 2개 이상 필요합니다 (자막 부재 영상 제외 후 부족)",
             )
 
-        # 선정 영상 수 vs 실제 분석 영상 수 — 자막 부재로 일부가 제외됐을 수
-        # 있다. 보고서·UI 모두 정직 표기하도록 분리해 추적.
-        selected_video_count = len(video_ids)
-        analyzed_video_ids = [r["video_id"] for r in per_video_reports]
-        excluded_video_ids = [v for v in video_ids if v not in set(analyzed_video_ids)]
+        perf = result.get("perf", {})
+        llm_detail = perf.get("llm_detail", {}) or {}
+        collect_detail = perf.get("collect_detail", {}) or {}
+        comment_heal_detail = perf.get("comment_heal_detail", {}) or {}
+        input_expansion_detail = perf.get("input_expansion_detail", {}) or {}
 
-        # build_product_integrated_insight_report 가 내부에서 댓글 self-healing 으로
-        # 적재된 DB 를 READ ONLY 로 집계해 ⑤ 소비자 여론 섹션을 채운다.
-        build_t0 = perf_counter()
-        report_text, model_used = build_product_integrated_insight_report(
-            product_name=product["name"],
-            per_video_reports=per_video_reports,
-            video_ids=analyzed_video_ids,
-            selected_video_count=selected_video_count,
-        )
-        build_ms = (perf_counter() - build_t0) * 1000
-
-        save_t0 = perf_counter()
-        report_id = save_product_integrated_report(
-            product_id=product_id,
-            video_ids=[r["video_id"] for r in per_video_reports],
-            report_text=report_text,
-            model_used=model_used,
-        )
-        save_ms = (perf_counter() - save_t0) * 1000
+        report_text = result.get("report_text", "")
+        source_video_count = result.get("source_video_count", 0)
+        analyzed_video_ids = result.get("analyzed_video_ids", [])
+        excluded_video_ids = result.get("excluded_video_ids", [])
+        cache_hit = result.get("cache_hit", False)
 
         total_ms = (perf_counter() - route_t0) * 1000
-        collect_detail = get_last_collect_perf()
-        llm_detail = get_last_llm_perf()
-        comment_heal_detail = get_last_comment_heal_perf()
-        input_expansion_detail = get_last_input_expansion_perf()
         print(
             f"[PERF][insight_route] product_id={product_id} total_ms={total_ms:.1f} "
-            f"collect_ms={collect_ms:.1f} build_ms={build_ms:.1f} llm_ms={llm_detail.get('llm_ms')} "
-            f"save_ms={save_ms:.1f} self_heal={collect_detail.get('self_heal_count')}/{collect_detail.get('self_heal_count', 0) + collect_detail.get('cache_hits', 0)} "
+            f"cache_hit={cache_hit} "
+            f"collect_ms={perf.get('collect_ms', 0.0):.1f} build_ms={perf.get('build_ms', 0.0):.1f} "
+            f"llm_ms={llm_detail.get('llm_ms')} save_ms={perf.get('save_ms', 0.0):.1f} "
+            f"self_heal={collect_detail.get('self_heal_count')}/{collect_detail.get('self_heal_count', 0) + collect_detail.get('cache_hits', 0)} "
             f"comment_heal={comment_heal_detail.get('healed', 0)}/{comment_heal_detail.get('total_videos', 0)} "
             f"comment_already={comment_heal_detail.get('already_analyzed', 0)} "
             f"comment_failed={comment_heal_detail.get('failed', 0)} "
@@ -431,24 +408,25 @@ def register_product_routes(app):
         )
 
         return {
-            "report_id": report_id,
+            "report_id": result.get("report_id"),
             "product_id": product_id,
             "report_text": report_text,
             "report_html": markdown_to_html(report_text),
-            "source_video_count": len(per_video_reports),       # 실제 분석된 영상 수 (분모 기준)
-            "selected_video_count": selected_video_count,        # 사용자가 선정한 총 수
-            "analyzed_video_count": len(per_video_reports),      # source_video_count 와 동일, 명확성 위해 중복
+            "source_video_count": source_video_count,            # 실제 분석된 영상 수 (분모 기준)
+            "selected_video_count": result.get("selected_video_count"),  # 사용자가 선정한 총 수
+            "analyzed_video_count": source_video_count,          # source_video_count 와 동일, 명확성 위해 중복
             "excluded_video_count": len(excluded_video_ids),     # 자막 부재로 제외된 수
             "excluded_video_ids": excluded_video_ids,            # 제외된 video_id 리스트 (디버그/UI 보조)
             "video_ids": analyzed_video_ids,
-            "model_used": model_used,
+            "model_used": result.get("model_used"),
             "perf_breakdown": {
                 "total_ms": round(total_ms, 1),
-                "collect_ms": round(collect_ms, 1),
-                "build_ms": round(build_ms, 1),
+                "collect_ms": round(perf.get("collect_ms", 0.0), 1),
+                "build_ms": round(perf.get("build_ms", 0.0), 1),
                 "llm_ms": llm_detail.get("llm_ms"),
-                "save_ms": round(save_ms, 1),
+                "save_ms": round(perf.get("save_ms", 0.0), 1),
                 "llm_fallback": llm_detail.get("fallback"),
+                "cache_hit": cache_hit,
                 "collect_detail": collect_detail,
                 "comment_heal_detail": comment_heal_detail,
                 "input_expansion_detail": input_expansion_detail,
