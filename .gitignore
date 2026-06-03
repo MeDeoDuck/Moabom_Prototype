@@ -61,6 +61,9 @@ tmp/
 # Personal Claude notes (team-shared guide is CLAUDE.md, tracked)
 CLAUDE.local.md
 
+# Claude Code local settings (personal, not shared)
+.claude/
+
 # Windows download metadata (created by WSL/Windows file copy)
 *:Zone.Identifier
 
