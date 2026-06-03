@@ -82,6 +82,73 @@ PostgreSQL (17 tables, Schema Auto-init)  →  Jinja2 화면 / ReportLab PDF
 
 ## 프로젝트 구조
 
+---
+
+## 왜 만들었나
+
+테크 제품을 살 때 유튜브 리뷰 N개를 일일이 보는 시간을 줄이는 것이 출발점. **여러 리뷰어가 공통으로 지적하는 장단점**(합의 빈도 N/N)과 **실사용자 댓글 여론**을 한 화면에서 비교할 수 있도록, 두 흐름을 별도 파이프라인으로 모아 한 보고서로 합친다.
+
+## 핵심 기능
+
+| | 설명 |
+|---|---|
+| **영상 선정 Agent** | 제품 키워드 → YouTube 후보 수집 → 6차원 정량 점수 + 다양성 필터 + **비교영상 자동 제외(scope filter)** + LLM Re-rank → 최종 영상 N개 선정 (LangGraph 8-step) |
+| **댓글 필터링 Agent** | 영상별 댓글 수집 → 12종 룰 기반 노이즈 제거 → Top 300 후보 가공 → 6기준 Multi-Criteria 선정 → LLM 5-class 분류 → ABSA 감성 분석 (7-step, ThreadPool 병렬) |
+| **보고서 파이프라인** | 4단계 누적 생성: ① 영상별 자막 보고서 → ② 영상별 댓글 보고서 → ③ 영상별 통합 → ④ **제품 단위 7섹션 종합** (구매 판정 · 핵심 요약 · 6차원 평가표 · 합의 기반 장단점 · 소비자 여론 · 전작 대비 변화 · 추천/비추) |
+| **Self-Healing** | 보고서 ④ 생성 시 자막·댓글 누락 영상을 감지해 자동 재수집 (`asyncio.gather` 병렬). 일부 영상 실패는 격리되어 전체 생성에 영향 없음 |
+| **DB 캐시 (FR-020)** | 동일 제품 재요청은 2초 이내 DB 캐시 응답. 자막은 `video_transcripts`에 영구 캐시 |
+
+## 시스템 아키텍처
+
+```
+사용자 입력 (제품명)
+      ↓
+[영상 선정 Agent — LangGraph]
+  fetch → enrich → score(6차원) → diversity → scope_filter → LLM Re-rank → finalize → rationale
+      ↓
+[자막 수집] yt-dlp / youtube-transcript-api  ←─ 자취방 데스크탑 fetch worker (datacenter IP 우회)
+[댓글 수집] YouTube Data API v3
+      ↓
+[댓글 필터링 Agent — 7-step]
+  collect → preprocess → rule filter → Top 300 → multi-criteria → LLM 5-class → ABSA
+      ↓
+[보고서 파이프라인 v2]
+  ① 자막 보고서 → ② 댓글 보고서 → ③ 영상 통합 → ④ 제품 7섹션 종합
+      ├─ Phase 1: 4종 보고서 다중 LLM 교차 검증 (환각 최소화)
+      ├─ Phase 2-b: RAG 의미 검색·재정렬 (sqlite3 + RunYourAI 임베딩)
+      └─ Phase 3: Serper Google Images + 비전 LLM 제품 이미지 검증
+      ↓
+PostgreSQL (17 tables, Schema Auto-init)  →  Jinja2 화면 / ReportLab PDF
+```
+
+## 기술적 포인트
+
+- **LangGraph StateGraph로 영상 선정 에이전트화** — 8단계 노드를 그래프로 분리해 노드별 교체·관측 용이. 6차원 정량 점수(조회수·좋아요·최신성·구독자·길이·관련도)와 LLM Re-rank 결합.
+- **비교영상 자동 제외(scope filter)** — 자취방 데스크탑 GPU 워커(`klue/roberta-large` 파인튜닝, test acc 89.94%)를 HTTP로 호출해 "여러 제품 비교/랭킹 영상"을 후보에서 제외. `SCOPE_FILTER_ENABLED=0` 킬 스위치, 워커 부재 시 pass-through.
+- **하이브리드 자막 fetch worker** — Azure datacenter IP의 YouTube 봇 차단을 우회하기 위해 자취방 데스크탑(`services/fetch_worker`)에 자막 수집과 scope 분류를 위임. 메인 앱은 워커 미응답 시 안전 퇴화.
+- **환각 방지 4규칙 + 다중 LLM 교차 검증** — 보고서 ④는 ① 근거 명시 ② 합의도 정량화(N/N) ③ 등장 제품만 비교 ④ 데이터 부족 명시. 4종 보고서 모두 별도 LLM으로 교차 검증 후 적재. 검증 실패 시 Heuristic Fallback("데이터 부족" 모드) 자동 전환.
+- **RAG (sqlite3 + RunYourAI 임베딩)** — pgvector 의도적 미선택. 보고서 ④ 입력 절삭을 의미 검색·재정렬로 대체해 토큰 예산 안에서 더 관련성 높은 청크 유지. 실패 시 절삭으로 안전 퇴화.
+- **단일 LLM 게이트웨이** — 모든 LLM 호출이 `scripts/llm/__init__.py:get_chat_llm()` 한 점을 통과(RunYourAI / OpenAI 호환 endpoint). 모델 교체·실험·비용 추적이 한 줄에서 끝남. (이전엔 Azure OpenAI / Groq Llama 등 산재 → PR #15에서 통합)
+- **댓글 LLM → on-prem distillation PoC** — RunYourAI GPT-4.1 댓글 분류를 `klue/roberta-large`로 증류해 일치율 86.5% · 22× speedup · 비용 99% 절감 검증 완료(50제품 N=994 벤치). 운영 통합 대기.
+- **운영 인프라** — Azure Container Apps (FastAPI, min=2/max=5 replicas) + Azure PostgreSQL Flexible Server + Azure Container Registry + Log Analytics. v1 사용자 설문 배포로 검증 완료.
+
+## 기술 스택
+
+| 영역 | 사용 기술 |
+|---|---|
+| Backend | FastAPI · Uvicorn · Pydantic |
+| Frontend | Jinja2 HTML templates · Vanilla JS · Markdown 렌더링 |
+| DB | PostgreSQL 15 (psycopg2-binary) · 17 tables · Schema Auto-init |
+| LLM | **RunYourAI 통합 게이트웨이** (`openai/gpt-4.1-2025-04-14`) · langchain-openai · LangGraph |
+| 데이터 수집 | YouTube Data API v3 · youtube-transcript-api · yt-dlp |
+| ML 보조 | klue/roberta-large (scope-classifier, 별 repo) · 텍스트 임베딩 (text-embedding-3-small) |
+| 검색 | Serper Google Images / Web Search (제품 이미지·검색 후보 제안) |
+| 출력 | ReportLab (한글 폰트 PDF) |
+| 인프라 | Azure Container Apps · Azure PG Flexible Server · ACR · Log Analytics · Docker / docker-compose |
+| 회귀 안전망 | pytest + Phase 0 contract/golden 테스트 (`regression/`) |
+
+## 프로젝트 구조
+
 ```
 Moabom_Prototype/
 ├── main.py                       # FastAPI 진입점
