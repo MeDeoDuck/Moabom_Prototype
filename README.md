@@ -17,11 +17,13 @@
 | **영상 선정 Agent** | 제품 키워드 → YouTube 후보 수집 → 6차원 정량 점수 + 다양성 필터 + **비교영상 자동 제외(scope filter)** + LLM Re-rank → 최종 영상 N개 선정 (LangGraph 8-step) |
 | **댓글 필터링 Agent** | 영상별 댓글 수집 → 12종 룰 기반 노이즈 제거 → Top 300 후보 가공 → 6기준 Multi-Criteria 선정 → LLM 5-class 분류 → ABSA 감성 분석 (7-step, ThreadPool 병렬) |
 | **보고서 파이프라인** | 4단계 누적 생성: ① 영상별 자막 보고서 → ② 영상별 댓글 보고서 → ③ 영상별 통합 → ④ **제품 단위 7섹션 종합** (구매 판정 · 핵심 요약 · 6차원 평가표 · 합의 기반 장단점 · 소비자 여론 · 전작 대비 변화 · 추천/비추) |
-| **Supervisor 오케스트레이터** | 보고서 ④ 생성 경로를 **LangGraph로 지휘**. 흩어져 있던 "DB 캐시냐 새로 fetch냐" 판단을 단일 Freshness 정책으로 통합 → 동일 영상 조합·입력 신선 시 기존 ④ **즉시 반환(캐시)**, 없으면 자동 보강·생성 (`force`로 강제 재생성). 기존 에이전트·YouTube API 무수정 래핑 |
+| **Supervisor 오케스트레이터** (부분) | **보고서 ④ 생성 경로**를 **LangGraph로 지휘**(전 과정 아님 — 영상 선정은 독립). 흩어져 있던 "DB 캐시냐 새로 fetch냐" 판단을 단일 Freshness 정책으로 통합 → 동일 영상 조합·입력 신선 시 기존 ④ **즉시 반환(캐시)**, 없으면 자동 보강·생성 (`force`로 강제 재생성). 기존 에이전트·YouTube API 무수정 래핑 |
 | **Self-Healing** | 보고서 ④ 생성 시 자막·댓글 누락 영상을 감지해 자동 재수집 (`asyncio.gather` 병렬). 일부 영상 실패는 격리되어 전체 생성에 영향 없음 |
 | **DB 캐시 (FR-020)** | 동일 제품 재요청은 2초 이내 DB 캐시 응답. 자막은 `video_transcripts`에 영구 캐시 |
 
 ## 시스템 아키텍처
+
+**부분 Supervisor 구조를 포함한 멀티 에이전트 워크플로우** — 영상 선정 · 댓글 필터링 · 보고서 에이전트가 순차 협업하고, 그중 **보고서 ④ 생성 경로**를 LangGraph Supervisor가 오케스트레이션한다 (영상 선정은 독립 라우트로 동작 — 전 과정을 한 Supervisor가 조율하지는 않음).
 
 ```
 사용자 입력 (제품명)
@@ -53,7 +55,7 @@ PostgreSQL (17 tables, Schema Auto-init)  →  Jinja2 화면 / ReportLab PDF
 ## 기술적 포인트
 
 - **LangGraph StateGraph로 영상 선정 에이전트화** — 8단계 노드를 그래프로 분리해 노드별 교체·관측 용이. 6차원 정량 점수(조회수·좋아요·최신성·구독자·길이·관련도)와 LLM Re-rank 결합.
-- **LangGraph Supervisor 오케스트레이터** — 보고서 ④ 경로의 self-healing·캐시 판단을 라우트에서 그래프로 분리(`orchestrator/`). 함수마다 흩어져 있던 "DB 캐시냐 fetch냐" 판단을 **단일 Freshness 정책(READ ONLY)** 으로 통합하고, 동일 영상 조합·입력 신선 시 기존 ④를 **즉시 반환(캐시)**. 분기는 LLM이 아닌 규칙 기반(빠르고 결정론적), LLM은 각 전문 노드 내부에서만 호출. 기존 에이전트 내부·YouTube API 무수정 블랙박스 래핑, langgraph 미설치 시 fallback (NR-007/012).
+- **LangGraph 부분 Supervisor 오케스트레이터** — 전 과정이 아니라 **보고서 ④ 생성 경로**(댓글 self-heal + 보고서 생성)만 라우트에서 그래프로 분리해 지휘(`orchestrator/`). 영상 선정 Agent는 독립 라우트로 동작. 함수마다 흩어져 있던 "DB 캐시냐 fetch냐" 판단을 **단일 Freshness 정책(READ ONLY)** 으로 통합하고, 동일 영상 조합·입력 신선 시 기존 ④를 **즉시 반환(캐시)**. 분기는 LLM이 아닌 규칙 기반(빠르고 결정론적), LLM은 각 전문 노드 내부에서만 호출. 기존 에이전트 내부·YouTube API 무수정 블랙박스 래핑, langgraph 미설치 시 fallback (NR-007/012).
 - **비교영상 자동 제외(scope filter)** — 자취방 데스크탑 GPU 워커(`klue/roberta-large` 파인튜닝, test acc 89.94%)를 HTTP로 호출해 "여러 제품 비교/랭킹 영상"을 후보에서 제외. `SCOPE_FILTER_ENABLED=0` 킬 스위치, 워커 부재 시 pass-through.
 - **하이브리드 자막 fetch worker** — Azure datacenter IP의 YouTube 봇 차단을 우회하기 위해 자취방 데스크탑(`services/fetch_worker`)에 자막 수집과 scope 분류를 위임. 메인 앱은 워커 미응답 시 안전 퇴화.
 - **환각 방지 4규칙 + 다중 LLM 교차 검증** — 보고서 ④는 ① 근거 명시 ② 합의도 정량화(N/N) ③ 등장 제품만 비교 ④ 데이터 부족 명시. 4종 보고서 모두 별도 LLM으로 교차 검증 후 적재. 검증 실패 시 Heuristic Fallback("데이터 부족" 모드) 자동 전환.
