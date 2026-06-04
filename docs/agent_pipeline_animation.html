@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>모아봄 — 에이전트 파이프라인 (전류 애니메이션)</title>
+<style>
+  :root{
+    --bg:#0a0e1a; --cyan:#27e0ff; --green:#46f08a; --txt:#cfe3ff; --dim:#6b86b3;
+    --pink:#ff5db1; --klue:#9b8cff; --save:#3fe0c0; --user:#ffd76a;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:radial-gradient(1200px 700px at 50% -10%,#11203b,#070a13 60%);color:var(--txt);
+    font-family:"Segoe UI","Apple SD Gothic Neo","Malgun Gothic",sans-serif;overflow:hidden}
+  .top{display:flex;align-items:center;gap:16px;padding:16px 24px}
+  .title{font-size:18px;font-weight:700;letter-spacing:.3px}
+  .title small{color:var(--dim);font-weight:400;margin-left:8px}
+  .btn{cursor:pointer;border:1px solid #2a3c63;background:linear-gradient(180deg,#16243f,#0e1830);
+    color:var(--txt);padding:10px 18px;border-radius:10px;font-size:14px;font-weight:600;transition:.2s}
+  .btn:hover{border-color:var(--cyan);box-shadow:0 0 16px rgba(39,224,255,.35)}
+  .btn.go{border-color:var(--green);color:#d8ffe9}
+  .btn.go:hover{box-shadow:0 0 18px rgba(70,240,138,.45)}
+  .status{margin-left:auto;font-size:13px;color:var(--cyan);min-width:340px;text-align:right;
+    text-shadow:0 0 10px rgba(39,224,255,.5)}
+  #stage{position:relative;width:100%;height:calc(100vh - 64px)}
+  svg.wires{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+  .moabom{position:absolute;left:13%;top:6%;width:85.5%;height:88%;border:1.5px solid #2f4773;border-radius:22px;
+    background:rgba(39,224,255,.012);pointer-events:none;transition:.4s}
+  .moabom.on{border-color:#3f6099;box-shadow:0 0 50px rgba(39,224,255,.07) inset}
+  .moabom .tag{position:absolute;top:-13px;left:26px;background:#0b1422;padding:2px 14px;font-size:13px;font-weight:800;
+    color:#9fe9ff;border:1px solid #2a3c63;border-radius:20px;letter-spacing:1px;text-shadow:0 0 10px rgba(39,224,255,.4)}
+  .chip{position:absolute;background:linear-gradient(180deg,#101a2e,#0c1422);border:1.5px solid #233458;
+    border-radius:14px;padding:11px 13px;min-width:142px;transition:border-color .3s,box-shadow .3s,transform .3s}
+  .chip .h{font-size:13.5px;font-weight:700;display:flex;align-items:center;gap:7px}
+  .chip .sub{font-size:10.5px;color:var(--dim);margin-top:2px}
+  .chip.on{border-color:var(--cyan);box-shadow:0 0 26px rgba(39,224,255,.45),inset 0 0 18px rgba(39,224,255,.08);
+    transform:translateY(-2px)}
+  .chip.done{border-color:var(--green);box-shadow:0 0 20px rgba(70,240,138,.35)}
+  #user.on{border-color:var(--user);box-shadow:0 0 26px rgba(255,215,106,.5),inset 0 0 18px rgba(255,215,106,.08)}
+  #user.done{border-color:var(--green)} #user .h{color:#ffe7a6}
+  #llm.on{border-color:var(--pink);box-shadow:0 0 26px rgba(255,93,177,.5),inset 0 0 18px rgba(255,93,177,.08)}
+  #klue.on{border-color:var(--klue);box-shadow:0 0 26px rgba(155,140,255,.55),inset 0 0 18px rgba(155,140,255,.08)}
+  #db.on{border-color:var(--save);box-shadow:0 0 26px rgba(63,224,192,.5),inset 0 0 18px rgba(63,224,192,.08)}
+  #klue .h{color:#cabfff} #llm .h{color:#ffc0e2} #db .h{color:#aef3e6}
+  .leds{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px;max-width:166px}
+  .led{font-size:9.5px;color:#54688f;background:#0b1322;border:1px solid #1c2942;border-radius:6px;
+    padding:2px 6px;transition:.25s}
+  .led.lit{color:#06121b;background:var(--cyan);border-color:var(--cyan);
+    box-shadow:0 0 10px rgba(39,224,255,.7);font-weight:700}
+  .chip.done .led.lit{background:var(--green);border-color:var(--green);box-shadow:0 0 10px rgba(70,240,138,.6)}
+  .sup{position:absolute;border:1.5px dashed #3a4f80;border-radius:18px;background:rgba(39,224,255,.03);transition:.3s}
+  .sup.on{border-color:var(--cyan);box-shadow:0 0 28px rgba(39,224,255,.18) inset}
+  .sup .tag{position:absolute;top:-11px;left:16px;background:#0c1422;padding:1px 10px;font-size:11px;
+    color:var(--cyan);border:1px solid #2a3c63;border-radius:20px;font-weight:600}
+  .legend{position:absolute;left:24px;bottom:14px;font-size:11px;color:var(--dim);line-height:1.7}
+  .legend b{color:var(--txt)}
+  .dot{filter:drop-shadow(0 0 6px currentColor)}
+</style>
+</head>
+<body>
+  <div class="top">
+    <div class="title">🐻 모아봄 에이전트 파이프라인 <small>사용자 제품명 입력 → 보고서 수신</small></div>
+    <button class="btn go" id="run">▶ 영상 5개 자동 선택</button>
+    <button class="btn" id="reset">↻ 다시</button>
+    <div class="status" id="status">대기 중 — ▶ 버튼을 누르세요</div>
+  </div>
+
+  <div id="stage">
+    <svg class="wires" id="wires"></svg>
+
+    <div class="moabom" id="moabom"><div class="tag">🐻 MOABOM AGENT</div></div>
+
+    <!-- 사용자 (시작 & 끝) -->
+    <div class="chip" id="user" style="left:0.8%;top:41%">
+      <div class="h">👤 사용자</div>
+      <div class="sub">제품명 입력 · 보고서 수신</div>
+    </div>
+
+    <!-- 로컬 모델 게이트웨이 -->
+    <div class="chip" id="klue" style="left:47%;top:8.5%">
+      <div class="h">🧠 Finetuned KLUE-BERT</div>
+      <div class="sub">로컬 API · 내 PC · 댓글 분류 (3-class)</div>
+    </div>
+
+    <div class="chip" id="yt" style="left:15%;top:39%">
+      <div class="h">📺 YouTube</div>
+      <div class="sub">영상·댓글·자막 (받아옴)</div>
+    </div>
+
+    <div class="chip" id="sel" style="left:26%;top:22%">
+      <div class="h">🎬 영상 선정 Agent</div>
+      <div class="sub">LangGraph · 8-step (독립 라우트)</div>
+      <div class="leds" data-steps="fetch,enrich,6차원 점수,다양성,scope,LLM rerank,finalize,근거"></div>
+    </div>
+
+    <div class="chip" id="cmt" style="left:44.5%;top:22%">
+      <div class="h">💬 댓글 필터링 Agent</div>
+      <div class="sub">7-step · ThreadPool 병렬</div>
+      <div class="leds" data-steps="수집,전처리,룰필터,Top300,멀티기준,분류,ABSA 감성"></div>
+    </div>
+
+    <div class="sup" id="sup" style="left:63.5%;top:15%;width:20%;height:42%">
+      <div class="tag">🧭 부분 Supervisor · LangGraph</div>
+    </div>
+    <div class="chip" id="rep" style="left:65.5%;top:26%">
+      <div class="h">📝 보고서 생성</div>
+      <div class="sub">Freshness → 생성 (④ 종합)</div>
+      <div class="leds" data-steps="①자막,②댓글,③통합,④7섹션"></div>
+    </div>
+
+    <div class="chip" id="db" style="left:85%;top:68%">
+      <div class="h">🗄 PostgreSQL</div>
+      <div class="sub">모든 결과 저장 · 조회</div>
+    </div>
+
+    <div class="chip" id="llm" style="left:42%;top:77%">
+      <div class="h">✨ RunYourAI Gateway</div>
+      <div class="sub">GPT-4.1 · 클라우드 · 쌍방향</div>
+    </div>
+
+    <div class="legend">
+      <b style="color:var(--user)">amber</b> 사용자 입력/수신 &nbsp;·&nbsp;
+      <b style="color:var(--cyan)">cyan</b> 데이터 흐름 &nbsp;·&nbsp;
+      <b style="color:var(--klue)">violet</b> KLUE-BERT 분류 &nbsp;·&nbsp;
+      <b style="color:var(--pink)">pink</b> RunYourAI 왕복 &nbsp;·&nbsp;
+      <b style="color:var(--save)">teal</b> DB 저장/조회<br/>
+      에이전트가 다음 단계로 넘길 때 <b>output 전달 ‖ DB 저장 동시</b> · 댓글 단계는 <b>KLUE-BERT ‖ RunYourAI 동시</b> · 전체를 <b style="color:#9fe9ff">MOABOM AGENT</b>가 감쌈
+    </div>
+  </div>
+
+<script>
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const stage=$('#stage'), svg=$('#wires'), status=$('#status');
+
+$$('.leds').forEach(el=>{
+  el.dataset.steps.split(',').forEach(t=>{
+    const d=document.createElement('span'); d.className='led'; d.textContent=t; el.appendChild(d);
+  });
+});
+
+const SVGNS='http://www.w3.org/2000/svg';
+let wires=[];
+const COLORS={
+  flow  :{base:'#1d2b45',line:'#27e0ff'},
+  llm   :{base:'#3a2740',line:'#ff5db1'},
+  klue  :{base:'#2c2c52',line:'#9b8cff'},
+  save  :{base:'#1d3a36',line:'#3fe0c0'},
+  user  :{base:'#3a3320',line:'#ffd76a'},
+  result:{base:'#1e3a2c',line:'#46f08a'}
+};
+function center(el,side){
+  const r=el.getBoundingClientRect(), s=stage.getBoundingClientRect();
+  const x=r.left-s.left, y=r.top-s.top;
+  if(side==='r') return {x:x+r.width, y:y+r.height/2};
+  if(side==='l') return {x:x, y:y+r.height/2};
+  if(side==='b') return {x:x+r.width/2, y:y+r.height};
+  if(side==='t') return {x:x+r.width/2, y:y};
+  return {x:x+r.width/2,y:y+r.height/2};
+}
+function curve(a,b,horiz){
+  if(horiz){const mx=(a.x+b.x)/2;return `M ${a.x} ${a.y} C ${mx} ${a.y} ${mx} ${b.y} ${b.x} ${b.y}`;}
+  const my=(a.y+b.y)/2;return `M ${a.x} ${a.y} C ${a.x} ${my} ${b.x} ${my} ${b.x} ${b.y}`;
+}
+function pathWire(d,kind){
+  const col=COLORS[kind]||COLORS.flow;
+  const mk=(stroke,extra)=>{const p=document.createElementNS(SVGNS,'path');p.setAttribute('d',d);p.setAttribute('fill','none');
+    p.setAttribute('stroke',stroke);p.setAttribute('stroke-width','3');p.setAttribute('stroke-linecap','round');
+    for(const k in (extra||{})) p.setAttribute(k,extra[k]); svg.appendChild(p); return p;};
+  const base=mk(col.base);
+  const flow=mk(col.line,{opacity:'0','stroke-dasharray':'10 14'});
+  const dot=document.createElementNS(SVGNS,'circle');
+  dot.setAttribute('r','5.5'); dot.setAttribute('fill',col.line); dot.setAttribute('class','dot');
+  dot.style.color=col.line; dot.setAttribute('opacity','0'); svg.appendChild(dot);
+  return {base,flow,dot,kind,color:col.line};
+}
+function addWire(fromSel,fromSide,toSel,toSide,horiz,kind){
+  const a=center($(fromSel),fromSide), b=center($(toSel),toSide);
+  return pathWire(curve(a,b,horiz),kind);
+}
+function buildWires(){
+  svg.innerHTML=''; wires=[];
+  wires.push(addWire('#user','r','#yt','l',true,'user'));   // 0 사용자→모아봄 (제품명)
+  wires.push(addWire('#yt','r','#sel','l',true,'flow'));    // 1 YouTube→선정 (받아옴)
+  wires.push(addWire('#sel','r','#cmt','l',true,'flow'));   // 2 선정→댓글
+  wires.push(addWire('#cmt','r','#rep','l',true,'flow'));   // 3 댓글→보고서
+  wires.push(addWire('#sel','b','#llm','t',false,'llm'));   // 4 선정↔RunYourAI(rerank)
+  wires.push(addWire('#cmt','b','#llm','t',false,'llm'));   // 5 댓글↔RunYourAI(ABSA)
+  wires.push(addWire('#rep','b','#llm','t',false,'llm'));   // 6 보고서↔RunYourAI(합성)
+  wires.push(addWire('#cmt','t','#klue','b',false,'klue')); // 7 댓글↔KLUE-BERT(분류)
+  wires.push(addWire('#sel','b','#db','l',false,'save'));   // 8 선정→DB 저장
+  wires.push(addWire('#cmt','b','#db','l',false,'save'));   // 9 댓글→DB 저장
+  wires.push(addWire('#rep','b','#db','t',false,'save'));   // 10 보고서↔DB 조회/저장
+  // 11 보고서 → 사용자 (결과 전달, 상단 아치)
+  const r=center($('#rep'),'t'), u=center($('#user'),'t');
+  wires.push(pathWire(`M ${r.x} ${r.y} C ${r.x} 10, ${u.x} 10, ${u.x} ${u.y}`,'result'));
+}
+window.addEventListener('resize',buildWires);
+buildWires();
+
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+function travel(w,dur=900,reverse=false){
+  return new Promise(res=>{
+    const len=w.flow.getTotalLength(); let st=null;
+    w.flow.style.opacity=.85;
+    w.flow.animate([{strokeDashoffset:0},{strokeDashoffset:reverse?48:-48}],{duration:600,iterations:Math.ceil(dur/600)});
+    w.dot.setAttribute('opacity','1');
+    function frame(t){
+      if(!st)st=t; const p=Math.min((t-st)/dur,1);
+      const at=reverse?(1-p):p, pt=w.flow.getPointAtLength(at*len);
+      w.dot.setAttribute('cx',pt.x); w.dot.setAttribute('cy',pt.y);
+      if(p<1) requestAnimationFrame(frame); else{ w.dot.setAttribute('opacity','0'); w.flow.style.opacity=.15; res(); }
+    }
+    requestAnimationFrame(frame);
+  });
+}
+async function pulseModel(w,times=2){
+  for(let i=0;i<times;i++){ await travel(w,500,false); await travel(w,500,true); }
+}
+let cmtBusy=false;
+async function loopPulse(w,opt={}){
+  const dur=opt.dur||460, oneWay=opt.oneWay||false;
+  while(cmtBusy){
+    await travel(w,dur,false);
+    if(!cmtBusy) break;
+    if(!oneWay){ await travel(w,dur,true); if(!cmtBusy) break; }
+  }
+}
+async function lightLeds(chipSel,total=1200){
+  const leds=$$(chipSel+' .led'); if(!leds.length) return;
+  const step=total/leds.length;
+  for(const l of leds){ l.classList.add('lit'); await sleep(step); }
+}
+function flashDb(){ const db=$('#db'); db.classList.add('on'); db.style.transform='scale(1.04)'; setTimeout(()=>db.style.transform='',180); }
+
+let running=false;
+async function run(){
+  if(running) return; running=true; reset(false);
+  const user=$('#user'),sel=$('#sel'),cmt=$('#cmt'),rep=$('#rep'),sup=$('#sup'),db=$('#db'),yt=$('#yt'),
+        llm=$('#llm'),klue=$('#klue'),moabom=$('#moabom');
+  const [wUY,wYS,wSC,wCR,wL1,wL2,wL3,wK,wSD,wCD,wRD,wRES]=wires;
+
+  const off=el=>el.classList.remove('on','done');         // 전류 지나가면 다시 꺼짐
+  const dimDb=()=>setTimeout(()=>off(db),650);
+
+  status.textContent='👤 사용자: 제품명 입력 → "영상 5개 자동 선택" 클릭';
+  user.classList.add('on'); await sleep(450);
+  moabom.classList.add('on');                              // 사용 시작 → 박스 켜짐
+  await travel(wUY,850); off(user);                        // 보낸 뒤 사용자 꺼짐
+
+  status.textContent='① YouTube에서 후보 영상·자막·댓글 받아오는 중…';
+  yt.classList.add('on'); await sleep(250);
+  await travel(wYS,900); off(yt);                          // 받아온 뒤 꺼짐
+
+  status.textContent='② 영상 선정 Agent — 6차원 점수 + scope + LLM rerank (8-step)';
+  sel.classList.add('on'); llm.classList.add('on');
+  pulseModel(wL1,2);
+  await lightLeds('#sel',1500); await sleep(120);
+  status.textContent='🎬→💬 선정 결과 댓글 단계로 전달 ‖ DB 저장 — 동시';
+  db.classList.add('on');
+  await Promise.all([ travel(wSC,950), travel(wSD,950) ]);
+  flashDb(); off(sel); off(llm); dimDb(); await sleep(180);   // 선정·모델·db 꺼짐
+
+  status.textContent='③ 댓글 필터링 — KLUE-BERT 분류 ‖ RunYourAI ABSA 동시 처리 (7-step)';
+  cmt.classList.add('on'); klue.classList.add('on'); llm.classList.add('on');
+  cmtBusy=true; loopPulse(wK); loopPulse(wL2);
+  await lightLeds('#cmt',1900);
+  cmtBusy=false; await sleep(560);
+  off(klue); off(llm); await sleep(60);
+  status.textContent='💬→📝 댓글 결과 보고서로 전달 ‖ DB 저장 (comments / agent_decisions / sentiments) — 동시';
+  db.classList.add('on');
+  await Promise.all([ travel(wCR,950), travel(wCD,950) ]);
+  flashDb(); off(cmt); dimDb(); await sleep(160);          // 댓글·db 꺼짐
+
+  status.textContent='④ Supervisor — DB에서 캐시·신선도 조회 (Freshness)';
+  sup.classList.add('on'); rep.classList.add('on'); db.classList.add('on');
+  await travel(wRD,700,true); off(db); await sleep(150);   // 조회 후 db 꺼짐
+  status.textContent='⑤ 보고서 ④ 합성 — ①②③ 종합 → 7섹션 (RunYourAI)';
+  llm.classList.add('on');
+  await Promise.all([ pulseModel(wL3,2), lightLeds('#rep',1500) ]);
+  off(llm); await sleep(180);                              // RunYourAI 합성 끝 → 꺼짐
+  status.textContent='💾 보고서 저장 — product_integrated_reports';
+  db.classList.add('on');
+  await travel(wRD,750); flashDb(); off(sup); dimDb(); await sleep(200);
+
+  status.textContent='📤 사용자에게 7섹션 종합 보고서 전달';
+  await travel(wRES,1150); off(rep);                       // 결과 전달 후 보고서 꺼짐
+  user.classList.add('done');                             // 사용자: 보고서 받음 (유지)
+  moabom.classList.remove('on');                          // 사용 끝 → 박스 꺼짐
+  status.textContent='✅ 완료 — 사용자가 종합 보고서를 받음 (대기)';
+  running=false;
+}
+function reset(full=true){
+  cmtBusy=false;
+  $$('.chip').forEach(c=>{c.classList.remove('on','done');c.style.transform='';});
+  $('#sup').classList.remove('on'); $('#moabom').classList.remove('on');
+  $$('.led').forEach(l=>l.classList.remove('lit'));
+  wires.forEach(w=>{w.flow.style.opacity=0;w.dot.setAttribute('opacity','0');});
+  if(full) status.textContent='대기 중 — ▶ 버튼을 누르세요';
+}
+$('#run').onclick=run;
+$('#reset').onclick=()=>{running=false;reset(true);};
+</script>
+</body>
+</html>
