@@ -147,6 +147,22 @@ def test_embedder_empty():
     assert vecs == [] and meta["backend"] == "none"
 
 
+def test_worker_credentials_priority(monkeypatch):
+    for k in ("EMBED_WORKER_URL", "SCOPE_WORKER_URL", "YOUTUBE_FETCH_WORKER_URL",
+              "EMBED_WORKER_TOKEN", "SCOPE_WORKER_TOKEN", "YOUTUBE_FETCH_WORKER_TOKEN"):
+        monkeypatch.delenv(k, raising=False)
+    # 아무것도 없으면 (None, None)
+    assert embedder._worker_credentials() == (None, None)
+    # Azure 처럼 자막 워커 변수만 있을 때도 잡혀야 함 (Qwen3 닿기)
+    monkeypatch.setenv("YOUTUBE_FETCH_WORKER_URL", "http://fetch")
+    monkeypatch.setenv("YOUTUBE_FETCH_WORKER_TOKEN", "ftok")
+    assert embedder._worker_credentials() == ("http://fetch", "ftok")
+    # 전용 EMBED_* 가 있으면 우선
+    monkeypatch.setenv("EMBED_WORKER_URL", "http://embed")
+    monkeypatch.setenv("EMBED_WORKER_TOKEN", "etok")
+    assert embedder._worker_credentials() == ("http://embed", "etok")
+
+
 # ---------- shadow orchestrator ----------
 
 def _patch_shadow_steps(monkeypatch, *, embed_backend="qwen3_worker", raise_embed=False):

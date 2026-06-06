@@ -27,14 +27,31 @@ class EmbeddingError(RuntimeError):
     """모든 backend 가 실패했을 때."""
 
 
-def _embed_via_worker(texts: list[str]) -> Optional[tuple[list[list[float]], dict]]:
-    """Qwen3 워커 /embed. 미설정/실패 시 None (호출부가 fallback).
+def _worker_credentials() -> tuple[Optional[str], Optional[str]]:
+    """워커 base_url + token 을 우선순위대로 해석.
 
-    임베딩 워커는 scope-classify 와 동일한 데스크탑 워커(8080)이므로, 전용
-    EMBED_WORKER_* 가 없으면 기존 SCOPE_WORKER_* 로 폴백 — 새 env 설정 부담 0.
+    임베딩/scope/transcript 는 전부 동일한 데스크탑 워커(8080)다. 전용
+    EMBED_WORKER_* → scope 용 SCOPE_WORKER_* → 자막용 YOUTUBE_FETCH_WORKER_*
+    순으로 폴백한다. 운영(Azure)은 워커 주소를 YOUTUBE_FETCH_WORKER_URL/TOKEN
+    로만 들고 있으므로(자막 경로), 이 폴백이 있어야 Azure 에서도 추가 설정 없이
+    Qwen3 워커에 닿는다. 셋 다 없으면 (None, None) → 호출부가 3-large 폴백.
     """
-    base_url = os.environ.get("EMBED_WORKER_URL") or os.environ.get("SCOPE_WORKER_URL")
-    token = os.environ.get("EMBED_WORKER_TOKEN") or os.environ.get("SCOPE_WORKER_TOKEN")
+    base_url = (
+        os.environ.get("EMBED_WORKER_URL")
+        or os.environ.get("SCOPE_WORKER_URL")
+        or os.environ.get("YOUTUBE_FETCH_WORKER_URL")
+    )
+    token = (
+        os.environ.get("EMBED_WORKER_TOKEN")
+        or os.environ.get("SCOPE_WORKER_TOKEN")
+        or os.environ.get("YOUTUBE_FETCH_WORKER_TOKEN")
+    )
+    return base_url, token
+
+
+def _embed_via_worker(texts: list[str]) -> Optional[tuple[list[list[float]], dict]]:
+    """Qwen3 워커 /embed. 미설정/실패 시 None (호출부가 fallback)."""
+    base_url, token = _worker_credentials()
     if not base_url or not token:
         return None
 
