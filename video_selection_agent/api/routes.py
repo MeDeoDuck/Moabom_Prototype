@@ -30,6 +30,7 @@ from video_selection_agent.core.models import ProductContext, SelectionDecision
 from video_selection_agent.core.policy import SelectionPolicyConfig
 from video_selection_agent.metrics import compute_selection_metrics
 from video_selection_agent.persistence.repository import (
+    cache_transcripts,
     load_latest_selected_ids,
     load_selection,
     save_selection,
@@ -392,8 +393,12 @@ def register_selection_routes(app: FastAPI) -> None:
             prev_selected_ids=prev_selected_ids,
             downgrade_note=downgrade_note,
         )
-        # 동기 v3 결과(있으면)를 metrics 에 함께 기록 — shadow 와 같은 축으로 비교.
+        # v3 가 fetch 한 선택 영상 자막을 분리(메트릭 비대화 방지) → 저장 후 캐시 적재.
+        selected_transcripts: dict = {}
         if shadow_result is not None:
+            fs = shadow_result.get("final_select")
+            if isinstance(fs, dict):
+                selected_transcripts = fs.pop("_selected_transcripts", {}) or {}
             metrics["shadow_v3"] = shadow_result
             metrics["v3_applied"] = strategy_effective == V3_CLUSTER
         save_selection(
@@ -404,6 +409,15 @@ def register_selection_routes(app: FastAPI) -> None:
             strategy=strategy_effective,
             metrics=metrics,
         )
+
+        # v3 가 fetch 한 선택 영상 자막을 video_transcripts 로 캐시 → 보고서가 재fetch
+        # 없이 재사용(이중 fetch/429 제거). videos 적재(save_selection) 후라 FK 만족.
+        if strategy_effective == V3_CLUSTER and selected_transcripts:
+            try:
+                n = cache_transcripts(selected_transcripts)
+                print(f"[select_videos] cached {n} v3 transcripts for reuse", flush=True)
+            except Exception as e:
+                print(f"[select_videos] transcript cache failed: {e}", flush=True)
 
         # v1_weighted 경로일 때만 비동기 coarse shadow (측정용). v3_cluster 는 위에서
         # inline 으로 이미 실행했으므로 중복 실행하지 않는다.

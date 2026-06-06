@@ -71,8 +71,12 @@ def llm_final_select(candidates: list[dict], transcripts: dict[str, str]) -> tup
         valid_ids.add(vid)
         tx = transcripts.get(vid)
         if tx:
+            from video_selection_agent.clustering.fine import sample_transcript
+
             meta["with_transcript"] += 1
-            body = {"video_id": vid, "title": c.get("title", ""), "transcript": tx[:_TRANSCRIPT_TRUNC]}
+            # 전체 자막을 first/middle/last 샘플링 후 cap (단점 중후반 보존)
+            body = {"video_id": vid, "title": c.get("title", ""),
+                    "transcript": sample_transcript(tx)[:_TRANSCRIPT_TRUNC]}
         else:
             body = {
                 "video_id": vid,

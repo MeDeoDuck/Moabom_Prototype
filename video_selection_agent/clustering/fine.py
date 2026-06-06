@@ -72,7 +72,7 @@ def fetch_shortlist_transcripts(video_ids: list[str]) -> tuple[dict[str, str], d
         return {}, meta
 
     cached = _load_cached_transcripts(video_ids)
-    out: dict[str, str] = {vid: sample_transcript(txt) for vid, txt in cached.items()}
+    out: dict[str, str] = dict(cached)  # 전체 자막 보존(샘플링은 소비 시점)
     meta["cache_hits"] = len(cached)
     meta["succeeded"] = len(cached)
 
@@ -92,7 +92,7 @@ def fetch_shortlist_transcripts(video_ids: list[str]) -> tuple[dict[str, str], d
                 result = None
             text = (result or {}).get("transcript_text") if result else None
             if text:
-                out[vid] = sample_transcript(text)
+                out[vid] = text  # 전체 자막(샘플링은 소비 시점) → 보고서 캐시 재사용 가능
                 meta["succeeded"] += 1
             else:
                 meta["failed"] += 1

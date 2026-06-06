@@ -16,7 +16,9 @@ V1_WEIGHTED = "v1_weighted"
 V3_CLUSTER = "v3_cluster"
 
 _VALID = {V1_WEIGHTED, V3_CLUSTER}
-_DEFAULT = V1_WEIGHTED
+# PR4: v3_cluster 가 기본 동작. v1_weighted 는 fallback(코드상 유지) + kill switch
+# (SELECTION_STRATEGY=v1_weighted 로 즉시 v1 복귀).
+_DEFAULT = V3_CLUSTER
 
 # PR4: v3_cluster 실 경로 활성화(coarse+fine+verifier → v1 위 재선택기). 더 이상 강등 X.
 # 비상시 SELECTION_STRATEGY 미설정/v1_weighted 로 즉시 v1 복귀(kill switch).

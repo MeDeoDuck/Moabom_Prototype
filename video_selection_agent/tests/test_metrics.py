@@ -123,11 +123,18 @@ def test_overlap_none_when_no_prev():
     assert m["prev_overlap_jaccard"] is None
 
 
-def test_strategy_default_is_v1(monkeypatch):
+def test_strategy_default_is_v3(monkeypatch):
+    # PR4: 기본 동작이 v3_cluster
     monkeypatch.delenv("SELECTION_STRATEGY", raising=False)
     eff, note = strat.resolve_strategy()
-    assert eff == strat.V1_WEIGHTED
+    assert eff == strat.V3_CLUSTER
     assert note is None
+
+
+def test_strategy_kill_switch_to_v1(monkeypatch):
+    monkeypatch.setenv("SELECTION_STRATEGY", "v1_weighted")
+    eff, note = strat.resolve_strategy()
+    assert eff == strat.V1_WEIGHTED
 
 
 def test_strategy_v3_active_after_pr4(monkeypatch):
@@ -139,5 +146,6 @@ def test_strategy_v3_active_after_pr4(monkeypatch):
 
 
 def test_strategy_unknown_falls_back(monkeypatch):
+    # 알 수 없는 값 → 기본(v3_cluster)
     monkeypatch.setenv("SELECTION_STRATEGY", "bogus")
-    assert strat.requested_strategy() == strat.V1_WEIGHTED
+    assert strat.requested_strategy() == strat.V3_CLUSTER
