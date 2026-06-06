@@ -3,7 +3,9 @@
 노드 연결 + 조건부 엣지:
   - fetch 결과 0건이면 즉시 END (우회로 짧게)
   - diversity_filter 생존자가 k_min 미만이면 relax 루프(최대 1회)
-  - LLM 노드는 실패 시에도 trace만 남기고 계속 (노드 내부에서 처리)
+  - scope_filter 후 정량 finalize_selection 으로 종료. v1 의 LLM 재정렬/근거
+    노드(llm_rerank·generate_rationale)는 PR4 에서 제거됨 — v3_cluster 가 기본
+    선택이고, 이 정량 결과는 v3 미적용 시 fallback.
 
 langgraph 미설치 시 `_FallbackLinearGraph`가 동일한 로직을 파이썬으로 에뮬레이션.
 """
@@ -16,8 +18,6 @@ from video_selection_agent.graph.nodes import (
     enrich_metadata,
     fetch_candidates,
     finalize_selection,
-    generate_rationale,
-    llm_rerank,
     score_quantitative,
     scope_filter,
 )
@@ -34,7 +34,7 @@ def _route_after_diversity(state: SelectionState) -> str:
     survivors = sum(1 for s in scores.values() if s.rank > 0)
     if survivors < policy.k_min and state.get("relax_attempts", 0) < 1:
         return "relax"
-    return "llm_rerank"
+    return "proceed"
 
 
 def relax_constraints(state: SelectionState) -> SelectionState:
@@ -78,9 +78,7 @@ def build_graph() -> Any:
     graph.add_node("diversity_filter", diversity_filter)
     graph.add_node("relax_constraints", relax_constraints)
     graph.add_node("scope_filter", scope_filter)
-    graph.add_node("llm_rerank", llm_rerank)
     graph.add_node("finalize_selection", finalize_selection)
-    graph.add_node("generate_rationale", generate_rationale)
 
     graph.add_edge(START, "fetch_candidates")
     graph.add_conditional_edges(
@@ -93,13 +91,13 @@ def build_graph() -> Any:
     graph.add_conditional_edges(
         "diversity_filter",
         _route_after_diversity,
-        {"relax": "relax_constraints", "llm_rerank": "scope_filter"},
+        {"relax": "relax_constraints", "proceed": "scope_filter"},
     )
     graph.add_edge("relax_constraints", "score_quantitative")
-    graph.add_edge("scope_filter", "llm_rerank")
-    graph.add_edge("llm_rerank", "finalize_selection")
-    graph.add_edge("finalize_selection", "generate_rationale")
-    graph.add_edge("generate_rationale", END)
+    # v1 LLM 재정렬/근거 노드 제거(PR4) — scope 후 바로 정량 finalize.
+    # v3_cluster(기본)가 이 결과를 재선택으로 교체하고, v3 미적용 시 이게 fallback.
+    graph.add_edge("scope_filter", "finalize_selection")
+    graph.add_edge("finalize_selection", END)
 
     return graph.compile()
 
@@ -125,7 +123,5 @@ class _FallbackLinearGraph:
             state = diversity_filter(state)  # type: ignore[assignment]
 
         state = scope_filter(state)  # type: ignore[assignment]
-        state = llm_rerank(state)  # type: ignore[assignment]
         state = finalize_selection(state)  # type: ignore[assignment]
-        state = generate_rationale(state)  # type: ignore[assignment]
         return state
