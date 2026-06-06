@@ -22,14 +22,20 @@ def _jaccard(a: set[str], b: set[str]) -> float | None:
     return round(len(a & b) / len(union), 4) if union else None
 
 
-def run_shadow(candidates: list[dict], v1_selected_ids: list[str]) -> dict:
-    """coarse shadow 1회 실행.
+def run_shadow(
+    candidates: list[dict],
+    v1_selected_ids: list[str],
+    do_fine: bool = False,
+) -> dict:
+    """coarse(+옵션 fine) shadow 1회 실행.
 
     candidates: [{video_id, title, description, subscriber_count, engagement,
-                  published_at, tier}, ...]
+                  published_at, tier, channel_id, scope_label}, ...]
+    do_fine: True 면 shortlist 자막 fetch + llm_final_select + verifier 까지(PR3).
+      자막 fetch 차단 위험 때문에 호출부가 별도 플래그로 좁게 게이트.
     반환 dict (metrics_json.shadow_v3 에 그대로 저장):
       {ok, n_candidates, backend, lang, cluster, shortlist[...],
-       overlap_with_v1, latency_ms, error?}
+       overlap_with_v1, final_select?, fine?, latency_ms, error?}
     """
     t0 = time.perf_counter()
     out: dict = {"ok": False, "n_candidates": len(candidates)}
@@ -71,6 +77,15 @@ def run_shadow(candidates: list[dict], v1_selected_ids: list[str]) -> dict:
             "v1_in_shortlist": len(sl_ids & v1_ids),
             "v1_total": len(v1_ids),
         }
+
+        # fine 은 best-effort: 실패해도 coarse 결과(shortlist 등)는 보존.
+        if do_fine and sl:
+            try:
+                out["final_select"] = _run_fine(sl, candidates)
+            except Exception as e:
+                out["final_select"] = {"error": f"fine failed: {type(e).__name__}: {e}"}
+                print(f"[shadow] fine failed (coarse preserved): {e}", flush=True)
+
         out["ok"] = True
     except Exception as e:  # 전체 격리
         out["error"] = f"shadow failed: {type(e).__name__}: {e}"
@@ -78,3 +93,45 @@ def run_shadow(candidates: list[dict], v1_selected_ids: list[str]) -> dict:
 
     out["latency_ms"] = int((time.perf_counter() - t0) * 1000)
     return out
+
+
+def _run_fine(shortlist_items: list[dict], candidates: list[dict]) -> dict:
+    """PR3 fine: shortlist 자막 fetch → llm_final_select → verifier 조합 선택.
+
+    shortlist 와 원본 candidates(tier/scope_label/channel_id 보유)를 video_id 로
+    join. 실패는 격리해 {error} 반환(coarse 결과엔 영향 없음).
+    """
+    from video_selection_agent.clustering import fine, final_select
+
+    by_id = {c["video_id"]: c for c in candidates}
+    sl_ids = [s["video_id"] for s in shortlist_items]
+
+    transcripts, tx_meta = fine.fetch_shortlist_transcripts(sl_ids)
+    judgments, judge_meta = final_select.llm_final_select(
+        [by_id[v] for v in sl_ids if v in by_id], transcripts
+    )
+
+    # verifier 입력: shortlist 메타 + LLM 판단 + tier/scope/channel join
+    verify_in: list[dict] = []
+    for s in shortlist_items:
+        vid = s["video_id"]
+        c = by_id.get(vid, {})
+        j = judgments.get(vid, {})
+        verify_in.append(
+            {
+                "video_id": vid,
+                "cluster_id": s.get("cluster_id"),
+                "tier": c.get("tier", ""),
+                "channel_id": c.get("channel_id", ""),
+                "scope_label": c.get("scope_label", 0),
+                "fit": j.get("fit", 0.0),
+                "depth": j.get("depth", 0.0),
+                "risk": j.get("risk", 0.0),
+                "reason": j.get("reason", s.get("reason", "")),
+            }
+        )
+
+    result = final_select.verify_and_select(verify_in)
+    result["transcript_fetch"] = tx_meta
+    result["judge_meta"] = judge_meta
+    return result

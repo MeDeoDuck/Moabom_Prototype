@@ -268,6 +268,11 @@ def _maybe_launch_coarse_shadow(decision: SelectionDecision) -> None:
         return
 
     tier_by_id = {vid: sb.tier for vid, sb in decision.all_scores.items()}
+    # scope_filter 노드가 ScoreBreakdown.extras 에 남긴 scope_label (verifier 가 사용)
+    scope_by_id = {
+        vid: (sb.extras or {}).get("scope_label", 0)
+        for vid, sb in decision.all_scores.items()
+    }
     cand_dicts = [
         {
             "video_id": c.video_id,
@@ -277,17 +282,21 @@ def _maybe_launch_coarse_shadow(decision: SelectionDecision) -> None:
             "engagement": (c.like_count or 0) + (c.comment_count or 0),
             "published_at": c.published_at.isoformat() if c.published_at else "",
             "tier": tier_by_id.get(c.video_id, ""),
+            "channel_id": c.channel_id,
+            "scope_label": scope_by_id.get(c.video_id, 0),
         }
         for c in decision.candidates_preview
     ]
     v1_ids = [v.video_id for v in decision.selected]
     run_id = decision.run_id
+    # fine(자막 fetch) 은 차단 위험 때문에 coarse 와 별도 게이트로 좁게 켠다(설계 §8/§10).
+    do_fine = os.environ.get("V3_SHADOW_FETCH_TRANSCRIPTS", "0") == "1"
 
     def _worker() -> None:
         try:
             from video_selection_agent.clustering.shadow import run_shadow
 
-            shadow = run_shadow(cand_dicts, v1_ids)
+            shadow = run_shadow(cand_dicts, v1_ids, do_fine=do_fine)
             update_run_shadow_metrics(run_id, shadow)
         except Exception as e:  # 스레드 내부 격리 — 본류 무영향
             print(f"[shadow] launch failed for {run_id}: {e}", flush=True)
