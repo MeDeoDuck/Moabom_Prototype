@@ -12,7 +12,7 @@ from __future__ import annotations
 import os
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout, as_completed
 from typing import Any, Iterable, Literal, Optional
 from uuid import UUID
 
@@ -20,6 +20,11 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 from scripts.database.queries import query_one
+from video_selection_agent.activation import (
+    apply_v3_selection,
+    run_v3_sync,
+    shadow_candidates,
+)
 from video_selection_agent.core.agent import VideoSelectionAgent
 from video_selection_agent.core.models import ProductContext, SelectionDecision
 from video_selection_agent.core.policy import SelectionPolicyConfig
@@ -30,7 +35,7 @@ from video_selection_agent.persistence.repository import (
     save_selection,
     update_run_shadow_metrics,
 )
-from video_selection_agent.strategy import resolve_strategy
+from video_selection_agent.strategy import V1_WEIGHTED, V3_CLUSTER, resolve_strategy
 
 
 class SelectVideosRequest(BaseModel):
@@ -258,35 +263,16 @@ def _shadow_enabled() -> bool:
 
 
 def _maybe_launch_coarse_shadow(decision: SelectionDecision) -> None:
-    """v3 coarse shadow 를 별도 스레드로 실행 (설계 §8).
+    """v3 coarse shadow 를 별도 스레드로 실행 (설계 §8, v1_weighted 경로 측정용).
 
-    사용자 응답을 막지 않게 fire-and-forget — 첫 호출 Qwen3 cold-load 가 수십초라
-    동기 실행하면 v1 속도(P0)를 망친다. 결과는 metrics_json.shadow_v3 로 patch.
-    gate: V3_SHADOW_ENABLED=1 + auto 모드만.
+    사용자 응답을 막지 않게 fire-and-forget. 결과는 metrics_json.shadow_v3 로 patch.
+    gate: V3_SHADOW_ENABLED=1 + auto 모드만. (v3_cluster 활성화 시엔 inline 실행하므로
+    이 비동기 shadow 는 안 쓴다.)
     """
     if not _shadow_enabled() or decision.mode != "auto":
         return
 
-    tier_by_id = {vid: sb.tier for vid, sb in decision.all_scores.items()}
-    # scope_filter 노드가 ScoreBreakdown.extras 에 남긴 scope_label (verifier 가 사용)
-    scope_by_id = {
-        vid: (sb.extras or {}).get("scope_label", 0)
-        for vid, sb in decision.all_scores.items()
-    }
-    cand_dicts = [
-        {
-            "video_id": c.video_id,
-            "title": c.title,
-            "description": c.description,
-            "subscriber_count": c.channel_subscriber_count,
-            "engagement": (c.like_count or 0) + (c.comment_count or 0),
-            "published_at": c.published_at.isoformat() if c.published_at else "",
-            "tier": tier_by_id.get(c.video_id, ""),
-            "channel_id": c.channel_id,
-            "scope_label": scope_by_id.get(c.video_id, 0),
-        }
-        for c in decision.candidates_preview
-    ]
+    cand_dicts = shadow_candidates(decision)
     v1_ids = [v.video_id for v in decision.selected]
     run_id = decision.run_id
     # fine(자막 fetch) 은 차단 위험 때문에 coarse 와 별도 게이트로 좁게 켠다(설계 §8/§10).
@@ -325,7 +311,7 @@ def register_selection_routes(app: FastAPI) -> None:
 
         policy = SelectionPolicyConfig(candidate_pool_size=request.candidate_pool_size)
         agent = VideoSelectionAgent(policy=policy)
-        # v3 설계 §8: strategy feature flag. PR1 은 v3_cluster 요청 시 v1_weighted 로 강등.
+        # strategy feature flag (v3 설계 §8). v3_cluster 면 v1 위에서 재선택.
         strategy, downgrade_note = resolve_strategy()
         t0 = time.perf_counter()
         decision = agent.select(
@@ -334,6 +320,30 @@ def register_selection_routes(app: FastAPI) -> None:
             k=request.k,
             selected_video_ids=request.selected_video_ids,
         )
+
+        # v3 활성화 (PR4): v1 후보 위에 coarse+fine 재선택을 동기 실행. 깔끔한 선택이
+        # 나오면 교체, 실패/fallback 이면 v1 유지(안전 복귀). custom 모드는 v1 그대로.
+        strategy_effective = strategy
+        shadow_result = None
+        if strategy == V3_CLUSTER and request.mode == "auto":
+            try:
+                # latency 상한 가드: 자막 fetch 가 막히면 v3 가 90s+ 걸릴 수 있음
+                # (실측). 상한 초과 시 포기하고 v1 반환 — 속도(P0) 보호.
+                timeout_s = float(os.environ.get("V3_SYNC_TIMEOUT", "60"))
+                with ThreadPoolExecutor(max_workers=1) as ex:
+                    fut = ex.submit(run_v3_sync, decision)
+                    shadow_result = fut.result(timeout=timeout_s)
+                if apply_v3_selection(decision, shadow_result):
+                    strategy_effective = V3_CLUSTER
+                else:
+                    strategy_effective = V1_WEIGHTED  # v3 fallback → v1
+            except FuturesTimeout:
+                print("[select_videos] v3 sync timeout → v1 fallback", flush=True)
+                shadow_result = {"ok": False, "error": "v3 sync timeout"}
+                strategy_effective = V1_WEIGHTED
+            except Exception as e:  # 어떤 실패도 v1 으로 복귀
+                print(f"[select_videos] v3 sync failed, v1 fallback: {e}", flush=True)
+                strategy_effective = V1_WEIGHTED
         latency_ms = int((time.perf_counter() - t0) * 1000)
 
         selected_ids = {v.video_id for v in decision.selected}
@@ -377,22 +387,28 @@ def register_selection_routes(app: FastAPI) -> None:
             prev_selected_ids = None
         metrics = compute_selection_metrics(
             decision,
-            strategy=strategy,
+            strategy=strategy_effective,
             latency_ms=latency_ms,
             prev_selected_ids=prev_selected_ids,
             downgrade_note=downgrade_note,
         )
+        # 동기 v3 결과(있으면)를 metrics 에 함께 기록 — shadow 와 같은 축으로 비교.
+        if shadow_result is not None:
+            metrics["shadow_v3"] = shadow_result
+            metrics["v3_applied"] = strategy_effective == V3_CLUSTER
         save_selection(
             decision,
             all_scores=all_scores,
             candidate_lookup=candidate_lookup,
             reset_existing_videos=request.process_comments,
-            strategy=strategy,
+            strategy=strategy_effective,
             metrics=metrics,
         )
 
-        # v3 coarse shadow (fire-and-forget, gate=V3_SHADOW_ENABLED). v1 반환 무영향.
-        _maybe_launch_coarse_shadow(decision)
+        # v1_weighted 경로일 때만 비동기 coarse shadow (측정용). v3_cluster 는 위에서
+        # inline 으로 이미 실행했으므로 중복 실행하지 않는다.
+        if strategy_effective != V3_CLUSTER:
+            _maybe_launch_coarse_shadow(decision)
 
         if request.process_comments:
             _process_comments_for_videos(

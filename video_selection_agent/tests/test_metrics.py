@@ -130,11 +130,12 @@ def test_strategy_default_is_v1(monkeypatch):
     assert note is None
 
 
-def test_strategy_v3_downgrades_in_pr1(monkeypatch):
+def test_strategy_v3_active_after_pr4(monkeypatch):
+    # PR4: v3_cluster 가 더 이상 강등되지 않고 그대로 해석됨
     monkeypatch.setenv("SELECTION_STRATEGY", "v3_cluster")
     eff, note = strat.resolve_strategy()
-    assert eff == strat.V1_WEIGHTED
-    assert note is not None and "downgraded" in note
+    assert eff == strat.V3_CLUSTER
+    assert note is None
 
 
 def test_strategy_unknown_falls_back(monkeypatch):

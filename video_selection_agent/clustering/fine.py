@@ -33,21 +33,57 @@ def sample_transcript(text: str, chunk: int = _SAMPLE_CHUNK) -> str:
     return f"{head}\n…\n{middle}\n…\n{tail}"
 
 
-def fetch_shortlist_transcripts(video_ids: list[str]) -> tuple[dict[str, str], dict]:
-    """shortlist video_id 들의 자막을 병렬 fetch → {video_id: sampled_text}.
+def _load_cached_transcripts(video_ids: list[str]) -> dict[str, str]:
+    """video_transcripts 캐시(v1 self-healing 적재분)를 read-only 조회.
 
-    기존 fetch_video_transcript 재사용(워커 우선 + 로컬 폴백). 자막 없는 영상은
-    결과에서 빠진다(호출부가 제목+설명 fallback). 반환 meta = fetch 성공/실패 수.
+    캐시 HIT 면 YouTube 재fetch 를 건너뛰어 지연·차단 위험을 줄인다(PR4 속도 최적화).
+    DB 부재/오류는 best-effort 로 무시(빈 dict).
     """
-    meta = {"attempted": len(video_ids), "succeeded": 0, "failed": 0}
+    if not video_ids:
+        return {}
+    try:
+        from scripts.database.connection import get_connection
+
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT video_id, transcript_text FROM video_transcripts "
+                "WHERE video_id = ANY(%s)",
+                (list(video_ids),),
+            )
+            return {row[0]: row[1] for row in cur.fetchall() if row[1]}
+        finally:
+            conn.close()
+    except Exception as e:
+        print(f"[fine] transcript cache read skipped: {e}", flush=True)
+        return {}
+
+
+def fetch_shortlist_transcripts(video_ids: list[str]) -> tuple[dict[str, str], dict]:
+    """shortlist video_id 들의 자막 → {video_id: sampled_text}.
+
+    캐시(video_transcripts) 우선, 미스만 fetch_video_transcript(워커+로컬 폴백)로
+    병렬 fetch. 자막 없는 영상은 결과에서 빠진다(호출부가 제목+설명 fallback).
+    meta = {attempted, succeeded, failed, cache_hits}.
+    """
+    meta = {"attempted": len(video_ids), "succeeded": 0, "failed": 0, "cache_hits": 0}
     if not video_ids:
         return {}, meta
 
+    cached = _load_cached_transcripts(video_ids)
+    out: dict[str, str] = {vid: sample_transcript(txt) for vid, txt in cached.items()}
+    meta["cache_hits"] = len(cached)
+    meta["succeeded"] = len(cached)
+
+    misses = [v for v in video_ids if v not in cached]
+    if not misses:
+        return out, meta
+
     from scripts.youtube.transcript_service import fetch_video_transcript
 
-    out: dict[str, str] = {}
     with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as ex:
-        futures = {ex.submit(fetch_video_transcript, vid): vid for vid in video_ids}
+        futures = {ex.submit(fetch_video_transcript, vid): vid for vid in misses}
         for fut in as_completed(futures):
             vid = futures[fut]
             try:
