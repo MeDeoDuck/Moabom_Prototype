@@ -501,8 +501,24 @@ def init_db():
             k_selected      INTEGER NOT NULL,
             candidate_count INTEGER NOT NULL,
             trace_json      JSONB,
+            strategy        VARCHAR(16),
+            metrics_json    JSONB,
             created_at      TIMESTAMPTZ DEFAULT NOW()
         );
+    """)
+    # v3 설계 PR1: 기존 테이블에 계측 컬럼 추가 (CREATE IF NOT EXISTS 는 컬럼 미추가)
+    cursor.execute("""
+        DO $$
+        BEGIN
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                          WHERE table_name='video_selection_runs' AND column_name='strategy') THEN
+                ALTER TABLE video_selection_runs ADD COLUMN strategy VARCHAR(16);
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                          WHERE table_name='video_selection_runs' AND column_name='metrics_json') THEN
+                ALTER TABLE video_selection_runs ADD COLUMN metrics_json JSONB;
+            END IF;
+        END $$;
     """)
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_selection_runs_product ON video_selection_runs(product_id);

@@ -174,6 +174,12 @@ def build_candidate_pool(
             candidates[vid] = candidate
 
     pool = list(candidates.values())
-    # view_count 내림차순으로 target_size 까지 절삭 (대형 채널 bias는 스코어링에서 보정)
+    # view_count 내림차순으로 target_size 까지 절삭 (대형 채널 bias는 스코어링에서 보정).
+    #
+    # ⚠️ v3 설계 §10 점검 (PR1): 이 절삭은 클러스터링 전에 이미 대형 채널을 편향
+    # 적재한다 (view_count ∝ 채널 규모). channel_anti_bias 스코어가 사후 보정하지만
+    # 풀 자체가 한쪽으로 쏠리면 보정 여지가 줄어 tier 다양성이 떨어진다.
+    # PR1 은 v1 baseline 동결을 위해 동작을 바꾸지 않고, metrics_json 의 tier_share 로
+    # 이 편향을 계측한다. 절삭 완화·쿼리 다양화는 PR2 에서 측정값을 보고 조정한다.
     pool.sort(key=lambda c: c.view_count, reverse=True)
     return pool[:target_size]
