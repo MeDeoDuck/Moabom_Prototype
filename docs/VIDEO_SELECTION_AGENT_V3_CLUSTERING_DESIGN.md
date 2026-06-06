@@ -83,7 +83,9 @@ Data API search/videos. 한국어 쿼리("리뷰/단점/브랜드"). **개선**:
 `is_en()` 언어 감지 → **영문만** RunYourAI GPT-4.1 batch 1콜로 한국어 번역(제목+설명). 한국어는 그대로. 임베딩 입력 언어 통일로 cross-lingual 확보. (실전 후보는 대부분 한국어라 평소 비용 ≈ 0, 영문 섞일 때만 +2-3초)
 
 ### [6] coarse_cluster — (신규)
-정규화된 `제목+설명(앞 500자)` → **Qwen3-Embedding-4B**(데스크탑 GPU, fp16, dim 2560) → **KMeans k=5**(seed 고정). 클러스터는 "관점 정답"이 아니라 **자막 fetch 예산 배분 + 중복 완화** 장치로 본다.
+정규화된 `제목+설명(앞 500자)` → **Qwen3-Embedding-4B**(데스크탑 GPU, **bf16**, dim 2560) → **KMeans k=5**(seed 고정). 클러스터는 "관점 정답"이 아니라 **자막 fetch 예산 배분 + 중복 완화** 장치로 본다.
+
+> dtype 정정(PR2): 초안의 fp16 → **bf16**. 모델 weight 가 bf16 native(`config.json: torch_dtype="bfloat16"`)이고, fp16 강제 downcast 는 지수부 범위 손실로 overflow/NaN 위험(Qwen 계열 fp16 attention 이슈). RTX 4060 Ti(Ada sm_89)는 bf16 풀속도 지원이라 속도 손해도 없음.
 
 ### [7] llm_cluster_shortlist — (신규, LLM#1)
 입력: 클러스터별 묶인 영상 `{cluster_id, 제목, 설명, 구독자수, engagement, 게시일, tier(원시값)}`.

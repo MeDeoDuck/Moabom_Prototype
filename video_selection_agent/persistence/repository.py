@@ -210,6 +210,33 @@ def load_selection(run_id: UUID) -> SelectionDecision | None:
         conn.close()
 
 
+def update_run_shadow_metrics(run_id: UUID, shadow: dict) -> None:
+    """metrics_json 의 `shadow_v3` 키만 patch (v3 coarse shadow, 비동기 적재).
+
+    v1 응답을 막지 않으려고 shadow 는 별도 스레드에서 늦게 끝나므로, 이미 저장된
+    run 의 metrics_json 에 shadow 결과만 합쳐 넣는다 (jsonb_set, 전체 재기록 X).
+    """
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            UPDATE video_selection_runs
+            SET metrics_json = jsonb_set(
+                COALESCE(metrics_json, '{}'::jsonb),
+                '{shadow_v3}', %s::jsonb, true)
+            WHERE run_id = %s
+            """,
+            (json.dumps(shadow, ensure_ascii=False), str(run_id)),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
 def load_latest_selected_ids(
     product_id: int,
     exclude_run_id: UUID | None = None,

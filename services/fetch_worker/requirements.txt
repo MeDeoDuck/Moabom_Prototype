@@ -8,3 +8,6 @@ transformers>=4.45,<5
 accelerate>=0.34
 # scope-classifier package providing build_input_text — install in editable mode:
 #   pip install -e ~/projects/scope-classifier
+# Qwen3-Embedding-4B serving (/embed, v3 coarse_cluster). last-token pooling은
+# 모델 설정대로 sentence-transformers 가 처리.
+sentence-transformers>=3.0

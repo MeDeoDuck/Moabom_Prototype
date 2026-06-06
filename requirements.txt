@@ -17,3 +17,6 @@ langchain-core>=0.3.0
 langchain-openai>=0.2.0,<1.0.0
 emoji>=2.0.0
 google-api-python-client>=2.0.0
+# v3 영상선정 coarse_cluster KMeans (설계 §5 합의). coarse.py 내부 lazy import —
+# shadow off(기본)일 땐 로드 안 됨.
+scikit-learn>=1.3
