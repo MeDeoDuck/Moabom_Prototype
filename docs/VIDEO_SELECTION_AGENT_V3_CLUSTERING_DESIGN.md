@@ -1,8 +1,21 @@
 # 영상 선정 에이전트 v3 — Coarse-to-Fine Clustering 설계
 
-> 상태: **설계 확정** (2026-06-07) · 대상 모듈: `video_selection_agent/`
-> 선행 설계: [VIDEO_SELECTION_AGENT_DESIGN.md](VIDEO_SELECTION_AGENT_DESIGN.md) (현 운영 v1)
-> 검증: codex(GPT-5.5 xhigh) 3라운드 적대적 리뷰 + 임베딩 PoC(실측)
+> 상태: **구현 완료 · v3 기본 활성화** (PR1~4 머지, 2026-06-07) · 대상 모듈: `video_selection_agent/`
+> 선행 설계: [VIDEO_SELECTION_AGENT_DESIGN.md](VIDEO_SELECTION_AGENT_DESIGN.md) (v1)
+> 검증: codex(GPT-5.5 xhigh) 3라운드 적대적 리뷰 + 임베딩 PoC + 라이브 실측
+
+## 구현 현황 (PR1~4)
+
+| PR | 내용 | 상태 |
+|---|---|---|
+| PR1 | 계측 + feature flag(`SELECTION_STRATEGY`) + v1 baseline 저장 | 머지 |
+| PR2 | lang_normalize + coarse_cluster(Qwen3 `/embed`) + shortlist (shadow) | 머지 |
+| PR3 | fetch_transcripts + llm_final_select + 코드 verifier | 머지 |
+| PR4 | **활성화** — v3_cluster 기본화 · v1 위 재선택기 · 자막 캐시 · v1 LLM 노드 제거 | 머지 |
+
+**현 동작**: 기본 `v3_cluster`. v1 그래프(fetch→enrich→score→diversity→scope→finalize)는 v3 입력 준비 + 정량 fallback 으로 유지. v1 의 LLM 노드(llm_rerank·generate_rationale)는 제거됨. kill switch = `SELECTION_STRATEGY=v1_weighted`. 속도 가드 `V3_SYNC_TIMEOUT`(기본 60s). 자막 fetch 견고화는 후속 과제.
+
+![v3 flowchart](assets/video_selection_agent_v3_flowchart.png)
 
 ---
 
