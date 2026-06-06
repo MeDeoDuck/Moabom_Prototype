@@ -15,6 +15,8 @@
 
 **현 동작**: 기본 `v3_cluster`. v1 그래프(fetch→enrich→score→diversity→scope→finalize)는 v3 입력 준비 + 정량 fallback 으로 유지. v1 의 LLM 노드(llm_rerank·generate_rationale)는 제거됨. kill switch = `SELECTION_STRATEGY=v1_weighted`. 속도 가드 `V3_SYNC_TIMEOUT`(기본 60s). 자막 fetch 견고화는 후속 과제.
 
+> **병렬화 실태**: §3 설계의 앞단 A/B/C `asyncio.gather` 병렬은 **미구현**. v3 를 "v1 그래프(순차) 위 재선택기"로 구현하면서 앞단이 v1 의 순차 노드가 됐기 때문. 실질 병렬은 `fetch_transcripts`(ThreadPool×5) 하나이며, 나머지(normalize→embed→cluster→shortlist→transcripts→final_select→verify)는 **데이터 의존 사슬이라 직렬이 맞음**. lang_normalize 를 v1 그래프와 겹치는 추가 병렬은 한국어 후보면 번역이 no-op 이라 이득 미미 → 보류.
+
 ![v3 flowchart](assets/video_selection_agent_v3_flowchart.png)
 
 ---
