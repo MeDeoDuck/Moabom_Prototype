@@ -210,6 +210,45 @@ def load_selection(run_id: UUID) -> SelectionDecision | None:
         conn.close()
 
 
+def cache_transcripts(transcripts: dict[str, str]) -> int:
+    """v3 선택 단계가 fetch 한 자막을 video_transcripts 로 적재(보고서 재사용).
+
+    save_selection 이후 호출 — 선택 영상이 videos 에 있어야 FK 만족. video_id 가
+    videos 에 없으면 그 행만 건너뛴다. 반환: 적재 성공 행 수.
+    """
+    if not transcripts:
+        return 0
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        written = 0
+        for vid, text in transcripts.items():
+            if not text:
+                continue
+            try:
+                cursor.execute(
+                    """
+                    INSERT INTO video_transcripts
+                        (video_id, transcript_text, language_code, segment_count, source)
+                    VALUES (%s, %s, %s, %s, 'v3_selection')
+                    ON CONFLICT (video_id) DO UPDATE SET
+                        transcript_text = EXCLUDED.transcript_text,
+                        segment_count = EXCLUDED.segment_count,
+                        source = EXCLUDED.source,
+                        updated_at = NOW()
+                    """,
+                    (vid, text, None, len(text.split())),
+                )
+                written += 1
+                conn.commit()
+            except Exception as e:  # FK 위반 등은 그 행만 건너뜀
+                conn.rollback()
+                print(f"[cache_transcripts] skip {vid}: {e}", flush=True)
+        return written
+    finally:
+        conn.close()
+
+
 def update_run_shadow_metrics(run_id: UUID, shadow: dict) -> None:
     """metrics_json 의 `shadow_v3` 키만 patch (v3 coarse shadow, 비동기 적재).
 

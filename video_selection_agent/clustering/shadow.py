@@ -134,4 +134,10 @@ def _run_fine(shortlist_items: list[dict], candidates: list[dict]) -> dict:
     result = final_select.verify_and_select(verify_in)
     result["transcript_fetch"] = tx_meta
     result["judge_meta"] = judge_meta
+    # 선택된 영상의 전체 자막을 첨부 — 저장(videos 적재) 후 routes 가 video_transcripts
+    # 로 캐시해 보고서가 재fetch 없이 재사용한다(이중 fetch/429 제거). metrics_json 에는
+    # 안 들어가게 routes 가 pop 으로 분리.
+    result["_selected_transcripts"] = {
+        vid: transcripts[vid] for vid in result.get("selected", []) if vid in transcripts
+    }
     return result

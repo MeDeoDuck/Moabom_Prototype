@@ -133,6 +133,8 @@ def test_shadow_do_fine_runs_pipeline(monkeypatch):
     fs = out["final_select"]
     assert set(fs["selected"]) == {"a", "b"}
     assert fs["transcript_fetch"]["succeeded"] == 1
+    # 선택 영상 중 자막 있는 a 만 캐시용으로 첨부(b 는 자막 없음)
+    assert fs["_selected_transcripts"] == {"a": "자막A"}
 
 
 def test_shadow_no_fine_by_default(monkeypatch):

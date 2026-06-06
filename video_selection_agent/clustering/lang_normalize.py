@@ -9,7 +9,12 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+
+# 번역은 의미 보존만 하면 되는 단순 작업 → 비용·지연 큰 full gpt-4.1 대신 mini.
+# (shortlist/final_select 같은 품질 판단은 full 유지 — 사용자 지시.)
+_TRANSLATE_MODEL = os.environ.get("V3_TRANSLATE_MODEL", "openai/gpt-4.1-mini")
 
 _HANGUL_RE = re.compile(r"[가-힣]")
 _LATIN_RE = re.compile(r"[A-Za-z]")
@@ -79,9 +84,14 @@ def normalize_texts(texts: list[str]) -> tuple[list[str], dict]:
     result = list(texts)
     payload = [{"id": i, "text": texts[i][:1200]} for i in en_idx]
     try:
-        from video_selection_agent.llm.azure_openai_client import AzureOpenAIClient
+        from video_selection_agent.llm.azure_openai_client import (
+            AzureOpenAIClient,
+            AzureOpenAIConfig,
+        )
 
-        data = AzureOpenAIClient().chat_structured(
+        cfg = AzureOpenAIConfig.from_env()
+        cfg.model = _TRANSLATE_MODEL  # 번역만 mini
+        data = AzureOpenAIClient(cfg).chat_structured(
             system=_TRANSLATE_SYSTEM,
             user=json.dumps(payload, ensure_ascii=False),
             json_schema=_TRANSLATE_SCHEMA,
