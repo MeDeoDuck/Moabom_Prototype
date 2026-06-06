@@ -36,7 +36,8 @@
 - 감성 분석: 현재 RunYourAI GPT-4.1 API. **KLUE-BERT 자체 운영 검토 중** (Break-even 약 1.24만 댓글/일).
 - 회원/인증: **미구현** (5월 4주차 착수 예정, Google OAuth)
 - **보고서 파이프라인 v2 (Phase 0~3, 전부 운영 연결·머지 완료)**: Phase0 회귀 안전망 `regression/` (보고서 4종 contract+golden, dev 의존성 `requirements-dev.txt`) · Phase1 4종 다중 LLM 검증 `scripts/reports/_verification.py` (환각 최소화) · Phase2-a 입력 ①②③ 종합 확장 `scripts/reports/_pir_input.py` · Phase2-b RAG `scripts/rag/` (sqlite3 + 순수 파이썬 코사인, RunYourAI 게이트웨이 임베딩 — pgvector 의도적 미선택) · Phase3 제품 이미지 `scripts/product_image/` (Serper 검색 + 비전 LLM, `tech_products.image_url` 컬럼)
-- 명세 임시안 중 **미적용/미구현**: Redis, VectorDB, Gemini, Transformers, scikit-learn, vLLM, ELK (RAG는 위 Phase2-b로 적용됨 — VectorDB는 여전히 미사용)
+- 명세 임시안 중 **미적용/미구현**: Redis, VectorDB, Gemini, Transformers, vLLM, ELK (RAG는 위 Phase2-b로 적용됨 — VectorDB는 여전히 미사용). scikit-learn 은 영상선정 v3 coarse_cluster(KMeans)용으로 도입(shadow 게이트, 정상경로 비로드)
+- **영상선정 v3 (coarse-to-fine clustering, 진행 중)**: 설계 `docs/VIDEO_SELECTION_AGENT_V3_CLUSTERING_DESIGN.md`. PR1=계측+feature flag(`SELECTION_STRATEGY`)+v1 baseline 저장(머지). PR2=lang_normalize+coarse_cluster(Qwen3-Embedding-4B 워커 `/embed`, bf16 + 3-large fallback)+shortlist를 **shadow**로(`V3_SHADOW_ENABLED=1`, auto 모드, fire-and-forget 스레드 → `metrics_json.shadow_v3`, v1 반환 무영향). 임베딩 워커는 scope 와 동일 데스크탑 워커(8080)
 
 ## 핵심 동작 메모
 - **7 섹션 종합 보고서** (`product_integrated_reports`, INSERT 누적 — UPSERT 아님): ①한 줄 구매 판정 + 종합 점수 + 합의도 ②핵심 요약(카드 3장) ③6차원 평가표(배터리·가격·카메라·성능·디스플레이·디자인) ④합의 기반 장단점(2명 이상 + 빈도 N/N, 다이버징 막대) ⑤소비자 여론(댓글 기반 — 가중 비율 + aspect 상위 + 대표 댓글) ⑥전작 대비 변화표 ⑦추천/비추(2열 칩 매처, 영상 N 근거). v1 사용자 피드백 반영해 v0의 Divergence·리뷰어 vs 실사용자 갭·경쟁/대체 비교 3 섹션 제거 후, ⑤ 소비자 여론은 `_pir_comment_aggregator` 가 `comment_filtering_agent` 결과(comments/comment_sentiments/aspect_extractions)를 READ ONLY 로 제품 단위 집계해 LLM 입력으로 주입한다.
@@ -55,7 +56,7 @@ scripts/                      # 운영 본체 (api / database / youtube / analys
 comment_filtering_agent/      # 댓글 7-step 필터 Agent (filters / classifiers / analyzers / core)
 video_selection_agent/        # 영상 선정 LangGraph Agent (graph / scoring / youtube / llm / persistence / api)
 regression/                   # 보고서 양식 회귀 안전망 (Phase 0, pytest · requirements-dev.txt)
-services/fetch_worker/        # 홈서버 워커 (운영): /transcript 자막 fetch + /scope-classify 비교영상 GPU 분류
+services/fetch_worker/        # 홈서버 워커 (운영): /transcript 자막 fetch + /scope-classify 비교영상 GPU 분류 + /embed Qwen3 임베딩(v3)
 app/  dags/  llm/             # 병렬 리팩터링·실험 모듈 (운영 미연결)
 templates/                    # Jinja2 HTML
 docs/                         # 과제 기획서, 요구사항명세서, 설계 문서, 중간 산출물

@@ -9,6 +9,8 @@ GET  /products/{product_id}/selection-runs/{run_id}
 """
 from __future__ import annotations
 
+import os
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Iterable, Literal, Optional
@@ -19,13 +21,14 @@ from pydantic import BaseModel, Field
 
 from scripts.database.queries import query_one
 from video_selection_agent.core.agent import VideoSelectionAgent
-from video_selection_agent.core.models import ProductContext
+from video_selection_agent.core.models import ProductContext, SelectionDecision
 from video_selection_agent.core.policy import SelectionPolicyConfig
 from video_selection_agent.metrics import compute_selection_metrics
 from video_selection_agent.persistence.repository import (
     load_latest_selected_ids,
     load_selection,
     save_selection,
+    update_run_shadow_metrics,
 )
 from video_selection_agent.strategy import resolve_strategy
 
@@ -250,6 +253,48 @@ def _decision_to_response(decision: Any) -> dict:
     }
 
 
+def _shadow_enabled() -> bool:
+    return os.environ.get("V3_SHADOW_ENABLED", "0") == "1"
+
+
+def _maybe_launch_coarse_shadow(decision: SelectionDecision) -> None:
+    """v3 coarse shadow 를 별도 스레드로 실행 (설계 §8).
+
+    사용자 응답을 막지 않게 fire-and-forget — 첫 호출 Qwen3 cold-load 가 수십초라
+    동기 실행하면 v1 속도(P0)를 망친다. 결과는 metrics_json.shadow_v3 로 patch.
+    gate: V3_SHADOW_ENABLED=1 + auto 모드만.
+    """
+    if not _shadow_enabled() or decision.mode != "auto":
+        return
+
+    tier_by_id = {vid: sb.tier for vid, sb in decision.all_scores.items()}
+    cand_dicts = [
+        {
+            "video_id": c.video_id,
+            "title": c.title,
+            "description": c.description,
+            "subscriber_count": c.channel_subscriber_count,
+            "engagement": (c.like_count or 0) + (c.comment_count or 0),
+            "published_at": c.published_at.isoformat() if c.published_at else "",
+            "tier": tier_by_id.get(c.video_id, ""),
+        }
+        for c in decision.candidates_preview
+    ]
+    v1_ids = [v.video_id for v in decision.selected]
+    run_id = decision.run_id
+
+    def _worker() -> None:
+        try:
+            from video_selection_agent.clustering.shadow import run_shadow
+
+            shadow = run_shadow(cand_dicts, v1_ids)
+            update_run_shadow_metrics(run_id, shadow)
+        except Exception as e:  # 스레드 내부 격리 — 본류 무영향
+            print(f"[shadow] launch failed for {run_id}: {e}", flush=True)
+
+    threading.Thread(target=_worker, name=f"shadow-{run_id}", daemon=True).start()
+
+
 def register_selection_routes(app: FastAPI) -> None:
     """main.py에서 1회 호출."""
 
@@ -336,6 +381,9 @@ def register_selection_routes(app: FastAPI) -> None:
             strategy=strategy,
             metrics=metrics,
         )
+
+        # v3 coarse shadow (fire-and-forget, gate=V3_SHADOW_ENABLED). v1 반환 무영향.
+        _maybe_launch_coarse_shadow(decision)
 
         if request.process_comments:
             _process_comments_for_videos(
