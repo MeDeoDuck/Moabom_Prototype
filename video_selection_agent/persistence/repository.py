@@ -22,6 +22,8 @@ def save_selection(
     all_scores: dict[str, dict] | None = None,
     candidate_lookup: dict[str, dict] | None = None,
     reset_existing_videos: bool = False,
+    strategy: str | None = None,
+    metrics: dict | None = None,
 ) -> None:
     """선정 결과를 3개 테이블에 기록.
 
@@ -47,8 +49,8 @@ def save_selection(
             """
             INSERT INTO video_selection_runs
                 (run_id, product_id, mode, model_used, policy_version,
-                 k_selected, candidate_count, trace_json)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                 k_selected, candidate_count, trace_json, strategy, metrics_json)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
             (
                 str(decision.run_id),
@@ -59,6 +61,8 @@ def save_selection(
                 len(decision.selected),
                 decision.candidate_count,
                 json.dumps(decision.trace, ensure_ascii=False),
+                strategy,
+                json.dumps(metrics, ensure_ascii=False) if metrics is not None else None,
             ),
         )
 
@@ -202,5 +206,45 @@ def load_selection(run_id: UUID) -> SelectionDecision | None:
             policy_version=run.get("policy_version") or "",
             trace=trace,
         )
+    finally:
+        conn.close()
+
+
+def load_latest_selected_ids(
+    product_id: int,
+    exclude_run_id: UUID | None = None,
+) -> list[str] | None:
+    """같은 제품 직전 run 의 선정 video_id (overlap/Jaccard 계측용).
+
+    이전 run 이 없으면 None. exclude_run_id 로 방금 저장한 run 은 제외.
+    """
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT run_id FROM video_selection_runs
+            WHERE product_id = %s AND (%s IS NULL OR run_id <> %s)
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (
+                product_id,
+                str(exclude_run_id) if exclude_run_id else None,
+                str(exclude_run_id) if exclude_run_id else None,
+            ),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return None
+        prev_run_id = row[0]
+        cursor.execute(
+            """
+            SELECT video_id FROM video_selection_scores
+            WHERE run_id = %s AND selected = TRUE
+            """,
+            (str(prev_run_id),),
+        )
+        return [r[0] for r in cursor.fetchall()]
     finally:
         conn.close()

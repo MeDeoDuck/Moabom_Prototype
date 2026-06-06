@@ -9,6 +9,7 @@ GET  /products/{product_id}/selection-runs/{run_id}
 """
 from __future__ import annotations
 
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Iterable, Literal, Optional
 from uuid import UUID
@@ -20,7 +21,13 @@ from scripts.database.queries import query_one
 from video_selection_agent.core.agent import VideoSelectionAgent
 from video_selection_agent.core.models import ProductContext
 from video_selection_agent.core.policy import SelectionPolicyConfig
-from video_selection_agent.persistence.repository import load_selection, save_selection
+from video_selection_agent.metrics import compute_selection_metrics
+from video_selection_agent.persistence.repository import (
+    load_latest_selected_ids,
+    load_selection,
+    save_selection,
+)
+from video_selection_agent.strategy import resolve_strategy
 
 
 class SelectVideosRequest(BaseModel):
@@ -264,12 +271,16 @@ def register_selection_routes(app: FastAPI) -> None:
 
         policy = SelectionPolicyConfig(candidate_pool_size=request.candidate_pool_size)
         agent = VideoSelectionAgent(policy=policy)
+        # v3 설계 §8: strategy feature flag. PR1 은 v3_cluster 요청 시 v1_weighted 로 강등.
+        strategy, downgrade_note = resolve_strategy()
+        t0 = time.perf_counter()
         decision = agent.select(
             product=context,
             mode=request.mode,
             k=request.k,
             selected_video_ids=request.selected_video_ids,
         )
+        latency_ms = int((time.perf_counter() - t0) * 1000)
 
         selected_ids = {v.video_id for v in decision.selected}
         all_scores = {
@@ -304,11 +315,26 @@ def register_selection_routes(app: FastAPI) -> None:
             }
             for c in decision.candidates_preview
         }
+        # 계측 (v3 설계 §7): 직전 run 과의 overlap 은 이번 run 저장 전에 조회.
+        try:
+            prev_selected_ids = load_latest_selected_ids(product_id)
+        except Exception as e:  # 계측 실패가 선정 응답을 막지 않게 격리
+            print(f"[select_videos] prev selected lookup failed: {e}")
+            prev_selected_ids = None
+        metrics = compute_selection_metrics(
+            decision,
+            strategy=strategy,
+            latency_ms=latency_ms,
+            prev_selected_ids=prev_selected_ids,
+            downgrade_note=downgrade_note,
+        )
         save_selection(
             decision,
             all_scores=all_scores,
             candidate_lookup=candidate_lookup,
             reset_existing_videos=request.process_comments,
+            strategy=strategy,
+            metrics=metrics,
         )
 
         if request.process_comments:
