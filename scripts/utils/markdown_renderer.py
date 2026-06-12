@@ -2,7 +2,7 @@
 Markdown rendering utilities for reports
 """
 import re
-from typing import List, Tuple
+
 
 
 # ── ① 섹션 '한 문장 결론:' 접두어 제거 (렌더 시점) ────────────────
@@ -79,53 +79,3 @@ def _basic_markdown_to_html(text: str) -> str:
     
     return '\n'.join(html_lines)
 
-
-def parse_markdown_for_pdf(text: str) -> List[Tuple[str, str]]:
-    """
-    Parse markdown into structured data for PDF rendering.
-    Returns list of (style, content) tuples.
-    
-    Styles: 'h1', 'h2', 'h3', 'body', 'bullet', 'blank'
-    """
-    lines = text.split('\n')
-    result = []
-    
-    for line in lines:
-        stripped = line.strip()
-        
-        # Empty line
-        if not stripped:
-            result.append(('blank', ''))
-            continue
-        
-        # Headers
-        if stripped.startswith('###'):
-            content = _strip_markdown_formatting(stripped[3:].strip())
-            result.append(('h3', content))
-        elif stripped.startswith('##'):
-            content = _strip_markdown_formatting(stripped[2:].strip())
-            result.append(('h2', content))
-        elif stripped.startswith('#'):
-            content = _strip_markdown_formatting(stripped[1:].strip())
-            result.append(('h1', content))
-        # Bullet lists
-        elif stripped.startswith('- '):
-            content = _strip_markdown_formatting(stripped[2:])
-            result.append(('bullet', content))
-        # Regular paragraph
-        else:
-            content = _strip_markdown_formatting(stripped)
-            result.append(('body', content))
-    
-    return result
-
-
-def _strip_markdown_formatting(text: str) -> str:
-    """Remove markdown formatting markers for plain text."""
-    # Remove bold
-    text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
-    # Remove italic
-    text = re.sub(r'\*(.+?)\*', r'\1', text)
-    # Remove inline code
-    text = re.sub(r'`(.+?)`', r'\1', text)
-    return text

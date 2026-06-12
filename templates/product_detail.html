@@ -1634,11 +1634,6 @@
                 <div id="integratedInsightMeta" class="integrated-insight-meta"></div>
                 <div id="integratedInsightBody" class="integrated-insight-body"></div>
                 <div class="integrated-insight-actions">
-                    <a id="integratedInsightPdfLink"
-                       class="btn-secondary"
-                       href="#"
-                       style="display:none;text-decoration:none;"
-                       target="_blank" rel="noopener">📄 PDF 다운로드</a>
                     <button class="btn-secondary" type="button" onclick="closeIntegratedInsight()">닫기</button>
                 </div>
             </div>
@@ -2278,7 +2273,6 @@
             const panel = document.getElementById('integratedInsightPanel');
             const meta = document.getElementById('integratedInsightMeta');
             const body = document.getElementById('integratedInsightBody');
-            const pdfLink = document.getElementById('integratedInsightPdfLink');
 
             const modelLabel = result.model_used ? ('모델: ' + result.model_used) : '';
             meta.textContent = '분석 영상 ' + result.source_video_count + '개 기반' +
@@ -2288,13 +2282,6 @@
             _pirDestroyCharts();
             body.innerHTML = result.report_html || ('<pre>' + escapeHtml(result.report_text || '') + '</pre>');
             enhanceIntegratedReport(body);
-
-            if (result.report_id) {
-                pdfLink.style.display = 'inline-block';
-                pdfLink.href = '/products/' + PRODUCT_ID + '/integrated-insight/' + result.report_id + '.pdf';
-            } else {
-                pdfLink.style.display = 'none';
-            }
 
             // fix/integrated-insight-screen-mode (옵션 a + 모달 우선):
             //   영상 섹션 즉시 숨김 → popup-summary fetch 후 모달이 *실제로*

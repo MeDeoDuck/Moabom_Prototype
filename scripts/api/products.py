@@ -7,10 +7,9 @@ from datetime import datetime
 from time import perf_counter
 
 from fastapi import BackgroundTasks, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from scripts.database.queries import query_one, query_all, execute_insert, execute_update
-from scripts.reports.pdf_generator import render_report_pdf
 from scripts.config import REPORT4_INPUT_EXPANSION
 from scripts.reports.product_integrated_insight import (
     collect_transcript_reports_for_product,
@@ -19,7 +18,6 @@ from scripts.reports.product_integrated_insight import (
     build_product_integrated_insight_report,
     save_product_integrated_report,
     get_latest_product_integrated_report,
-    get_product_integrated_report,
     get_last_collect_perf,
     get_last_llm_perf,
     get_last_comment_heal_perf,
@@ -537,28 +535,8 @@ def register_product_routes(app):
             "price_display": meta_result.get("price_display"),
             "spec_display": spec_display,
             "missing": missing,
-            "report_id": latest["id"],   # 프론트가 후속 PDF 등 연결 가능
+            "report_id": latest["id"],
         }
-
-    @app.get("/products/{product_id}/integrated-insight/{report_id}.pdf")
-    async def download_integrated_insight_pdf(product_id: int, report_id: int):
-        """통합 인사이트 보고서를 PDF로 다운로드한다."""
-        product = query_one("SELECT * FROM tech_products WHERE product_id = %s", (product_id,))
-        if not product:
-            raise HTTPException(status_code=404, detail="Product not found")
-
-        report = get_product_integrated_report(product_id, report_id)
-        if not report:
-            raise HTTPException(status_code=404, detail="Report not found")
-
-        title = f"[{product['name']}] 종합 인사이트 보고서"
-        pdf_bytes = render_report_pdf(title, report["report_text"])
-        filename = f"product_{product_id}_integrated_insight_{report_id}.pdf"
-        return Response(
-            content=pdf_bytes,
-            media_type="application/pdf",
-            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-        )
 
     # ────────────────────────────────────────────────────────────
     # feature/similar-products — 유사 제품 비교하기 (축소판)
