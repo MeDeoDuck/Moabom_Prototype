@@ -18,7 +18,9 @@ COPY main.py ./
 COPY scripts/ ./scripts/
 COPY video_selection_agent/ ./video_selection_agent/
 COPY comment_filtering_agent/ ./comment_filtering_agent/
+COPY orchestrator/ ./orchestrator/
 COPY templates/ ./templates/
+COPY static/ ./static/
 COPY seeds/ ./seeds/
 
 EXPOSE 8000

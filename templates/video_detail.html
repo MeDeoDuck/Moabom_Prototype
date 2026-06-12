@@ -1669,15 +1669,18 @@
         .vd-tab {
             display: inline-flex; align-items: center; justify-content: center; gap: 8px;
             padding: 16px 18px; border-radius: 14px; cursor: pointer;
-            border: 1px solid #e7eaf1; background: #fff; color: #4a5168;
+            border: 1px solid var(--border); background: #fff; color: #4a5168;
             font-family: inherit; font-size: 15px; font-weight: 700;
             transition: background 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s;
         }
-        .vd-tab:hover { border-color: #c7d4f7; background: #f5f8ff; }
+        .vd-tab:hover { border-color: #d9c2dd; background: var(--surface-soft); }
         .vd-tab .vd-tab-ico {
             font-size: 11px; font-weight: 800; letter-spacing: 0.02em;
             border: 1.5px solid currentColor; border-radius: 4px; padding: 1px 4px;
         }
+        /* 탭 아이콘 통일: 이모지(렌더링 환경 의존) 대신 CC 배지와 같은 톤의 SVG */
+        .vd-tab .vd-tab-svg { display: inline-flex; flex: none; }
+        .vd-tab .vd-tab-svg svg { width: 17px; height: 17px; display: block; }
         .vd-tab-active, .vd-tab-active:hover {
             background: #4b164c; color: #fff; border-color: #4b164c;
             box-shadow: 0 8px 20px rgba(75,22,76,0.28);
@@ -1865,10 +1868,10 @@
                 <span class="vd-tab-ico">CC</span><span>자막 기반 분석</span>
             </button>
             <button type="button" class="vd-tab" data-report="comment" onclick="vdShowReport('comment')">
-                <span class="vd-tab-emoji">💬</span><span>댓글 기반 분석</span>
+                <span class="vd-tab-svg" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg></span><span>댓글 기반 분석</span>
             </button>
             <button type="button" class="vd-tab vd-tab-active" data-report="integrated" onclick="vdShowReport('integrated')">
-                <span class="vd-tab-emoji">📊</span><span>통합 분석</span>
+                <span class="vd-tab-svg" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span><span>통합 분석</span>
             </button>
         </div>
         <div id="reportPanels">
@@ -1877,9 +1880,10 @@
             <h2>📝 자막 기반 분석</h2>
             {% if transcript_row %}
                 <div class="report-meta">
-                    <span>🌐 {{ transcript_row.language_code or 'unknown' }}</span>
+                    <span>🌐 {{ {'ko': '한국어', 'en': '영어', 'ja': '일본어'}.get(transcript_row.language_code, transcript_row.language_code or '언어 미상') }} 자막</span>
                     <span>🧩 {{ transcript_row.segment_count or 0 }} 세그먼트</span>
-                    <span>🕒 {{ transcript_row.updated_at }}</span>
+                    {# 마이크로초 포함 raw timestamp 노출 방지 — 분 단위까지만 #}
+                    <span>🕒 {{ transcript_row.updated_at.strftime('%Y-%m-%d %H:%M') if transcript_row.updated_at else '' }} 기준</span>
                 </div>
                 <div class="report-box" id="transcriptReportBox" data-report-type="transcript">{{ transcript_report|safe }}</div>
             {% else %}
@@ -3063,12 +3067,15 @@
             const neg = _cmClamp(parseFloat(s.negative_pct) || 0, 0, 100);
             const mood = s.one_line_mood || '';
             const total = (meta && meta.total_analyzed_comments) || 0;
+            // 헤드라인 수치는 우세 감성의 비율로 표시 — 긍정 7% 옆에 "전반적 부정"이
+            // 붙어 "부정이 7%"로 오독되던 문제 방지.
+            const domi = [['긍정', pos], ['중립', neu], ['부정', neg]]
+                .sort((a, b) => b[1] - a[1])[0];
             return '<h3 class="cm-section-title">1. 소비자 민심 한눈에</h3>' +
-                '<div class="cm-section-intro">긍정/부정/중립 비율 + 전체 분위기 한 줄. ' +
-                'comment_sentiments 가중 집계 (analysis_weight 반영) — LLM 미관여.</div>' +
+                '<div class="cm-section-intro">댓글 전체의 긍정/중립/부정 비율과 전반적인 분위기를 한눈에 보여드려요.</div>' +
                 '<div class="cm-mood-card">' +
                     '<div class="cm-mood-headline">' +
-                        '<span class="cm-mood-pct-large">' + pos.toFixed(0) + '%</span>' +
+                        '<span class="cm-mood-pct-large">' + domi[0] + ' ' + domi[1].toFixed(0) + '%</span>' +
                         '<span class="cm-mood-label">' + _cmEsc(mood) + '</span>' +
                     '</div>' +
                     '<div class="cm-mood-sentence">분석 댓글 ' + total + '건 — 가중 비율 (확신도 반영)</div>' +
@@ -3092,13 +3099,12 @@
 
         function _cmRenderS2(points) {
             return '<h3 class="cm-section-title">2. 긍정 핵심 인사이트</h3>' +
-                '<div class="cm-section-intro">긍정 댓글의 반복 포인트 3~5개를 댓글 건수 막대로 나열. ' +
-                '각 포인트 = 한 줄 요약 + 그 아래 대표 댓글 1~2개 (원문 그대로).</div>' +
+                '<div class="cm-section-intro">긍정 댓글에서 반복적으로 언급된 포인트를 댓글 수와 함께 정리했어요. 대표 댓글은 원문 그대로 보여드려요.</div>' +
                 _cmRenderPoints(points || [], 'pos');
         }
         function _cmRenderS3(points) {
             return '<h3 class="cm-section-title">3. 부정 핵심 인사이트</h3>' +
-                '<div class="cm-section-intro">동일 구조 · 부정 댓글 기준. 실제 부정 댓글 원문 인용으로 균형감 확보.</div>' +
+                '<div class="cm-section-intro">부정 댓글에서 반복적으로 언급된 포인트예요. 실제 댓글 원문을 그대로 인용했어요.</div>' +
                 _cmRenderPoints(points || [], 'neg');
         }
         function _cmRenderPoints(points, kind) {
@@ -3150,7 +3156,7 @@
                     '</div>';
             }).join('');
             return '<h3 class="cm-section-title">4. 주요 언급 이슈</h3>' +
-                '<div class="cm-section-intro">댓글에서 가장 많이 언급된 제품 키워드/이슈를 빈도순 정리.</div>' +
+                '<div class="cm-section-intro">댓글에서 가장 많이 언급된 키워드와 이슈를 빈도순으로 정리했어요.</div>' +
                 '<div class="cm-issues">' + cells + '</div>';
         }
 
@@ -3237,16 +3243,14 @@
         // ── S1 / S2 일치 / 불일치 카드 (메타 배지 포함) ──────────
         function _cmpRenderS1(points) {
             return '<h3 class="cmp-section-title">1. 의견 일치 포인트</h3>' +
-                '<div class="cmp-section-intro">리뷰어도 소비자도 동의하는 항목 = 가장 신뢰도 높은 정보. ' +
-                '3 단계 fallback 매칭 (strict → semantic → text) 으로 빈약 출력을 방지. ' +
-                '각 카드는 리뷰어 자막 발췌 + 소비자 댓글 원문 좌우 배치 + 매칭 단계·근거 강도 배지.</div>' +
+                '<div class="cmp-section-intro">리뷰어와 실사용자가 같은 의견을 보인 항목이에요 — 가장 믿을 만한 정보예요. ' +
+                '리뷰어 자막 발췌와 소비자 댓글 원문을 나란히 비교해 보여드려요.</div>' +
                 _cmpRenderCards(points || [], 'agree');
         }
 
         function _cmpRenderS2(points, fallbackNotes) {
-            const intro = '<div class="cmp-section-intro">리뷰어↔소비자 평가가 다른 항목. ' +
-                '"명확한 반대" + "온도차" 까지 포함. 비었을 경우 backup — 공백 대신 ' +
-                '"대체로 일치" 긍정 결론으로 채움.</div>';
+            const intro = '<div class="cmp-section-intro">리뷰어와 실사용자의 평가가 갈린 항목이에요. ' +
+                '명확한 반대 의견부터 미묘한 온도차까지 함께 보여드려요.</div>';
             const items = points || [];
             if (items.length === 0) {
                 // Option A: LLM 이 메시지를 안 채워도 항상 긍정 backup 카드를 노출.
@@ -3403,8 +3407,8 @@
                 ? con.map(t => '<li>' + _cmEsc(t) + '</li>').join('')
                 : '<li class="empty">없음</li>';
             return '<h3 class="cmp-section-title">3. 리뷰어만 언급 vs 소비자만 언급</h3>' +
-                '<div class="cmp-section-intro">한쪽만 다룬 주제 — 리뷰어는 전문 포인트(벤치마크 등), ' +
-                '소비자는 실사용 이슈(AS·내구성 등). 각 칼럼에 항목 여러 개. 각각 고유 가치.</div>' +
+                '<div class="cmp-section-intro">한쪽에서만 다룬 주제예요 — 리뷰어는 벤치마크 같은 전문 포인트를, ' +
+                '실사용자는 AS·내구성 같은 생활 이슈를 주로 언급해요.</div>' +
                 '<div class="cmp-only-grid">' +
                     '<div class="cmp-only-col">' +
                         '<div class="cmp-only-header reviewer">📝 리뷰어만 언급</div>' +
@@ -3428,8 +3432,8 @@
             const items = specs || [];
             // Option A: 비어있으면 섹션 자체를 그리지 않음 (footer 의 hiddenSections 가 사유 노출)
             if (items.length === 0) return '';
-            const intro = '<div class="cmp-section-intro">자막에서 추출된 정량 스펙 변화를 한 줄 카드로 표시. ' +
-                '본문에 묻혀 있던 수치 (12MP→48MP 등) 를 끌어올림. 보고서 ①의 전작 비교 표를 파싱해 생성.</div>';
+            const intro = '<div class="cmp-section-intro">리뷰 영상에서 언급된 정량 스펙 변화(예: 12MP→48MP)를 ' +
+                '한 줄 카드로 모아 보여드려요.</div>';
             const rows = items.map(s => {
                 const name = s.spec_name || '';
                 const before = s.before || '';
@@ -3457,9 +3461,8 @@
             const items = questions || [];
             // Option A: 비어있으면 섹션 자체를 그리지 않음 (footer 가 사유 노출)
             if (items.length === 0) return '';
-            const intro = '<div class="cmp-section-intro">지금까지 묻혀있던 ' +
-                '<code>llm_classifications.QUESTION</code> 라벨 댓글 활용. ' +
-                '소비자가 실제로 던진 질문을 유사 질문끼리 묶어 노출 → 구매 전 사용자 공감.</div>';
+            const intro = '<div class="cmp-section-intro">소비자들이 댓글로 실제 던진 질문을 ' +
+                '비슷한 것끼리 묶어 보여드려요. 구매 전 궁금한 점을 미리 확인할 수 있어요.</div>';
             const cards = items.map((q, i) => {
                 const qc = q.question_comment || {};
                 const qText = qc.text_raw || '';

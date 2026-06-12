@@ -524,6 +524,16 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_selection_runs_product ON video_selection_runs(product_id);
     """)
 
+    # select-videos 진행상태 (로딩바 실연동용 폴링 — in-memory 대신 DB 를 쓰는 이유:
+    # 운영 min 2 replica 라 폴링 요청이 작업 중인 replica 에 안 떨어질 수 있음)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS selection_progress (
+            product_id  INT PRIMARY KEY REFERENCES tech_products(product_id) ON DELETE CASCADE,
+            payload     JSONB NOT NULL,
+            updated_at  TIMESTAMPTZ DEFAULT NOW()
+        );
+    """)
+
     # video_selection_scores: 후보 × run (선정/미선정 + 점수 + rationale)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS video_selection_scores (
