@@ -1,7 +1,7 @@
 """Node 6: 최종 k개 선정 (k_min ≤ k ≤ k_max).
 
-다양성 통과(rank > 0) 후보 중 final_score 상위 k개를 선택.
-Auto 모드: top-k 자동. Custom 모드: state['selected_video_ids'] 존중.
+다양성 통과(rank > 0) 후보 중 final_score 상위 k개를 자동 선택.
+(Custom 직접 선택 모드는 v1 피드백으로 제거됨 — auto top-k 단일 경로.)
 """
 from __future__ import annotations
 
@@ -38,24 +38,14 @@ def finalize_selection(state: SelectionState) -> SelectionState:
     candidates = {c.video_id: c for c in state.get("candidates", [])}
     policy = state["policy"]
     k = policy.clamp_k(state.get("k_requested", policy.k_min))
-    mode = state.get("mode", "auto")
-    requested_ids = state.get("selected_video_ids") or []
 
     eligible = [s for s in scores.values() if s.rank > 0]
     eligible.sort(key=lambda s: s.final_score, reverse=True)
 
     trace = list(state.get("trace", []))
 
-    if mode == "custom" and requested_ids:
-        id_set = set(requested_ids)
-        picked = [s for s in eligible if s.video_id in id_set]
-        # 요청된 순서로 재정렬
-        picked.sort(key=lambda s: requested_ids.index(s.video_id))
-        picked = picked[: policy.k_max]
-        trace.append(f"finalize_selection[custom]: {len(picked)} requested")
-    else:
-        picked = eligible[:k]
-        trace.append(f"finalize_selection[auto]: top-{len(picked)} / k={k}")
+    picked = eligible[:k]
+    trace.append(f"finalize_selection[auto]: top-{len(picked)} / k={k}")
 
     # Fallback — 마이너 제품처럼 검색 결과·다양성 필터로 후보가 부족할 때
     # k_min(3) 보장. diversity_filter에서 rank=0으로 묻힌 후보를 final_score 순으로 부활.

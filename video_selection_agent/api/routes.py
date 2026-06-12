@@ -13,11 +13,11 @@ import os
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout, as_completed
-from typing import Any, Iterable, Literal, Optional
+from typing import Any, Iterable
 from uuid import UUID
 
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from scripts.database.queries import query_one
 from video_selection_agent.activation import (
@@ -40,13 +40,9 @@ from video_selection_agent.strategy import V1_WEIGHTED, V3_CLUSTER, resolve_stra
 
 
 class SelectVideosRequest(BaseModel):
-    mode: Literal["auto", "custom"] = "auto"
-    k: int = Field(5, ge=3, le=10)
-    candidate_pool_size: int = Field(30, ge=25, le=50)
-    selected_video_ids: Optional[list[str]] = None
-    weights_override: Optional[dict[str, float]] = None
-    # Custom UI의 미리보기 호출에서는 false로 두어 댓글 파이프라인을 건너뛴다.
-    # 그 외(Auto-only, Custom 확정)에서는 반드시 true 여야 댓글/통합 보고서가 채워짐.
+    # 선정 정책은 auto 고정 (k=5, candidate_pool_size=30 — SelectionPolicyConfig 기본값).
+    # Custom 직접 선택 모드와 k/pool 파라미터는 v1 피드백으로 제거됨.
+    # 구 클라이언트가 보내는 잔여 필드(mode/k 등)는 Pydantic이 무시한다.
     process_comments: bool = True
 
 
@@ -190,34 +186,6 @@ def _decision_to_response(decision: Any) -> dict:
     # 응답에만 함께 실어 보내기 위한 룩업 (선정 로직/저장 구조는 불변).
     candidate_by_id = {c.video_id: c for c in decision.candidates_preview}
 
-    def _candidate_payload(c: Any) -> dict:
-        base = {
-            "video_id": c.video_id,
-            "title": c.title,
-            "channel_name": c.channel_name,
-        }
-        sb = score_lookup.get(c.video_id)
-        if sb is not None:
-            base.update({
-                "final_score": sb.final_score,
-                "tier": sb.tier,
-                "rank": sb.rank,
-                "dimensions": sb.dimensions,
-                "weighted_contributions": sb.weighted_contributions,
-                "rationale_short": sb.llm_rationale_short,
-            })
-        return base
-
-    candidates_sorted = sorted(
-        decision.candidates_preview,
-        key=lambda c: (
-            score_lookup[c.video_id].final_score
-            if c.video_id in score_lookup
-            else float("-inf")
-        ),
-        reverse=True,
-    )
-
     return {
         "run_id": str(decision.run_id),
         "mode": decision.mode,
@@ -247,7 +215,6 @@ def _decision_to_response(decision: Any) -> dict:
             }
             for v in decision.selected
         ],
-        "candidates_preview": [_candidate_payload(c) for c in candidates_sorted],
         "diversity_report": {
             "channels_unique": decision.diversity_report.channels_unique,
             "tier_distribution": decision.diversity_report.tier_distribution,
@@ -310,23 +277,18 @@ def register_selection_routes(app: FastAPI) -> None:
             keywords=[],
         )
 
-        policy = SelectionPolicyConfig(candidate_pool_size=request.candidate_pool_size)
+        policy = SelectionPolicyConfig()  # k=5, candidate_pool_size=30 고정
         agent = VideoSelectionAgent(policy=policy)
         # strategy feature flag (v3 설계 §8). v3_cluster 면 v1 위에서 재선택.
         strategy, downgrade_note = resolve_strategy()
         t0 = time.perf_counter()
-        decision = agent.select(
-            product=context,
-            mode=request.mode,
-            k=request.k,
-            selected_video_ids=request.selected_video_ids,
-        )
+        decision = agent.select(product=context, mode="auto", k=5)
 
         # v3 활성화 (PR4): v1 후보 위에 coarse+fine 재선택을 동기 실행. 깔끔한 선택이
-        # 나오면 교체, 실패/fallback 이면 v1 유지(안전 복귀). custom 모드는 v1 그대로.
+        # 나오면 교체, 실패/fallback 이면 v1 유지(안전 복귀).
         strategy_effective = strategy
         shadow_result = None
-        if strategy == V3_CLUSTER and request.mode == "auto":
+        if strategy == V3_CLUSTER:
             try:
                 # latency 상한 가드: 자막 fetch 가 막히면 v3 가 90s+ 걸릴 수 있음
                 # (실측). 상한 초과 시 포기하고 v1 반환 — 속도(P0) 보호.
