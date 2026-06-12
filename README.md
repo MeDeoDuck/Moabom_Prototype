@@ -49,7 +49,7 @@
 │      └─ Phase 3: Serper Google Images + 비전 LLM 제품 이미지 검증         │
 └──────────────────────────────────────────────────────────────────────────┘
       ↓
-PostgreSQL (17 tables, Schema Auto-init)  →  Jinja2 화면 / ReportLab PDF
+PostgreSQL (17 tables, Schema Auto-init)  →  Jinja2 화면
 ```
 
 ## 기술적 포인트
@@ -76,7 +76,6 @@ PostgreSQL (17 tables, Schema Auto-init)  →  Jinja2 화면 / ReportLab PDF
 | 데이터 수집 | YouTube Data API v3 · youtube-transcript-api · yt-dlp |
 | ML 보조 | klue/roberta-large (scope-classifier, 별 repo) · 텍스트 임베딩 (text-embedding-3-small) |
 | 검색 | Serper Google Images / Web Search (제품 이미지·검색 후보 제안) |
-| 출력 | ReportLab (한글 폰트 PDF) |
 | 인프라 | Azure Container Apps · Azure PG Flexible Server · ACR · Log Analytics · Docker / docker-compose |
 | 회귀 안전망 | pytest + Phase 0 contract/golden 테스트 (`regression/`) |
 

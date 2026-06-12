@@ -44,8 +44,9 @@ class VideoSelectionAgent:
     ) -> SelectionDecision:
         """LangGraph를 실행해 SelectionDecision 반환.
 
-        - `auto`: 에이전트가 상위 k개 자동 선정.
-        - `custom`: 동일 풀 후보 30개 반환, `selected_video_ids`로 필터.
+        auto 단일 경로: 에이전트가 상위 k개 자동 선정 (k=5, pool=30 고정 운영).
+        mode/selected_video_ids 파라미터는 state·저장 스키마 호환을 위해 남아 있고
+        custom 분기는 제거됨 (finalize_selection은 항상 auto top-k).
         """
         run_id: UUID = uuid4()
         k_clamped = self.policy.clamp_k(k)

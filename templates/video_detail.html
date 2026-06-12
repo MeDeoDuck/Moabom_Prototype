@@ -203,16 +203,6 @@
         .report-box th, .report-box td { border: 1px solid var(--border); padding: 8px 10px; text-align: left; }
         .report-box th { background: var(--primary-soft); color: var(--primary-strong); font-weight: 600; }
 
-        .pdf-download-btn {
-            display: inline-flex; align-items: center; gap: 6px;
-            margin-top: 14px; padding: 10px 16px;
-            background: linear-gradient(135deg, var(--primary), var(--primary-strong));
-            color: white; text-decoration: none;
-            border-radius: 10px; font-size: 14px; font-weight: 600;
-            transition: transform 0.1s, box-shadow 0.15s;
-        }
-        .pdf-download-btn:hover { transform: translateY(-1px); box-shadow: var(--shadow); }
-
         .empty-report {
             background: var(--surface); border: 1px dashed var(--border);
             border-radius: 14px; padding: 24px; color: var(--muted); font-size: 14px;
@@ -1892,9 +1882,6 @@
                     <span>🕒 {{ transcript_row.updated_at }}</span>
                 </div>
                 <div class="report-box" id="transcriptReportBox" data-report-type="transcript">{{ transcript_report|safe }}</div>
-                <a class="pdf-download-btn" href="/products/{{ product_id }}/videos/{{ video.video_id }}/transcript-report.pdf">
-                    ⬇ PDF 다운로드
-                </a>
             {% else %}
                 <div class="empty-report">자막 분석 보고서가 없습니다. 영상에 접근 가능한 자막이 없거나 자막 접근이 제한된 경우입니다.</div>
             {% endif %}
@@ -1911,9 +1898,6 @@
                 <div id="commentReportBox" class="cm-root">
                     <div class="cm-loading">렌더링 중…</div>
                 </div>
-                <a class="pdf-download-btn" href="/products/{{ product_id }}/videos/{{ video.video_id }}/comment-report.pdf">
-                    ⬇ PDF 다운로드
-                </a>
             {% else %}
                 <div class="empty-report">댓글 반응 분석을 사용할 수 없습니다. 제품 관련 ANALYZE 댓글이 부족하거나 LLM 응답이 실패한 경우입니다.</div>
             {% endif %}
@@ -1930,9 +1914,6 @@
                 <div id="integratedReportBox" class="cmp-root">
                     <div class="cmp-loading">렌더링 중…</div>
                 </div>
-                <a class="pdf-download-btn" href="/products/{{ product_id }}/videos/{{ video.video_id }}/integrated-analysis.pdf">
-                    ⬇ PDF 다운로드
-                </a>
             {% else %}
                 <div class="empty-report">통합 비교 보고서를 사용할 수 없습니다. 리뷰어와 소비자가 공통으로 언급한 항목이 없거나, 보고서 ①·② 둘 중 하나가 생성 실패한 경우입니다.</div>
             {% endif %}
