@@ -4,6 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ product.name }} — 모아봄</title>
+    <link rel="icon" type="image/png" href="/static/favicon.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -17,15 +18,15 @@
             --border-soft: #f0ebfa;
             --text: #1f1c2e;
             --muted: #6b6880;
-            --primary: #6f42c1;
-            --primary-strong: #5a32a3;
-            --primary-soft: #efe9fb;
-            --accent: #f06292;
+            --primary: #4b164c;
+            --primary-strong: #38103a;
+            --primary-soft: #f6ecf7;
+            --accent: #9a4299;
             --success: #20c997;
             --warning: #f5a623;
             --danger: #e35d6a;
-            --shadow: 0 4px 16px rgba(111, 66, 193, 0.08);
-            --shadow-strong: 0 10px 32px rgba(111, 66, 193, 0.18);
+            --shadow: 0 4px 16px rgba(75, 22, 76, 0.08);
+            --shadow-strong: 0 10px 32px rgba(75, 22, 76, 0.18);
         }
 
         * { box-sizing: border-box; }
@@ -624,7 +625,7 @@
         .pir-s5-aspect-track {
             position: relative; display: block;
             height: 8px; border-radius: 999px;
-            background: rgba(111,66,193,0.08); overflow: hidden;
+            background: rgba(75,22,76,0.08); overflow: hidden;
         }
         .pir-s5-aspect-fill {
             position: absolute; left: 0; top: 0; bottom: 0;
@@ -935,16 +936,16 @@
         .svl-loading .sel-overlay-card h3 { color: #121833; font-size: 19px; }
         .svl-loading .sel-overlay-card .sub { color: #8b90a0; }
         .svl-loading .sel-spinner {
-            border: 3px solid #e7eaf1; border-top-color: #3a6df0;
+            border: 3px solid #e7eaf1; border-top-color: #4b164c;
         }
         .svl-loading .pir-progress-bar { background: #eaf0fb; height: 12px; }
         .svl-loading .pir-progress-fill {
-            background: linear-gradient(90deg, #3a6df0, #2c5be0);
+            background: linear-gradient(90deg, #4b164c, #38103a);
         }
         .svl-loading .pir-progress-meta { color: #abafbe; align-items: baseline; }
         .svl-loading .pir-progress-meta strong { color: #121833; }
         .svl-loading .pir-progress-meta > span:first-child strong {
-            font-size: 30px; font-weight: 800; color: #3a6df0; line-height: 1;
+            font-size: 30px; font-weight: 800; color: #4b164c; line-height: 1;
         }
         .svl-loading .sel-step {
             background: #f5f7fb; border: 1px solid #e7eaf1; border-radius: 12px;
@@ -954,13 +955,13 @@
         .svl-loading .sel-step:last-of-type { margin-bottom: 0; }
         .svl-loading .sel-step .icon { background: #e7eaf1; color: #8b90a0; }
         .svl-loading .sel-step.active {
-            background: #e9f0ff; border-color: #3a6df0; color: #121833; font-weight: 600;
+            background: #f6ecf7; border-color: #4b164c; color: #121833; font-weight: 600;
         }
-        .svl-loading .sel-step.active .icon { background: #3a6df0; color: #fff; }
+        .svl-loading .sel-step.active .icon { background: #4b164c; color: #fff; }
         .svl-loading .sel-step.done { background: #f5f7fb; border-color: #e7eaf1; color: #4b5573; }
-        .svl-loading .sel-step.done .icon { background: #3a6df0; color: #fff; }
+        .svl-loading .sel-step.done .icon { background: #4b164c; color: #fff; }
         .svl-loading .sel-tip-box { background: #eaf0fb; }
-        .svl-loading .sel-tip-label { background: #3a6df0; color: #fff; }
+        .svl-loading .sel-tip-label { background: #4b164c; color: #fff; }
         .svl-loading .sel-tip-text { color: #1c2340; }
 
         /* ── Phase 5: 최종 판정 팝업 모달 (라이트 톤, 목업 그대로) ── */
@@ -1277,6 +1278,7 @@
             margin: 0; font-size: 56px; font-weight: 800; letter-spacing: 0.04em;
             color: #121833; line-height: 1.05;
         }
+        .svl-logo { height: 48px; vertical-align: -6px; margin-right: 12px; }
         .svl-divider { height: 1px; background: #e7eaf1; margin: 0 0 34px; border: 0; }
         @media (max-width: 560px) { .svl-wordmark { font-size: 40px; } }
 
@@ -1311,12 +1313,12 @@
         }
         .svl-insight-btn {
             display: flex; align-items: center; gap: 16px;
-            background: #3a6df0; color: #fff; border: none; cursor: pointer;
+            background: #4b164c; color: #fff; border: none; cursor: pointer;
             padding: 28px 52px; border-radius: 20px; font-family: inherit;
-            box-shadow: 0 10px 26px rgba(58, 109, 240, 0.3);
+            box-shadow: 0 10px 26px rgba(75, 22, 76, 0.3);
             transition: background 0.15s ease, transform 0.1s ease;
         }
-        .svl-insight-btn:hover { background: #2c5be0; transform: translateY(-1px); }
+        .svl-insight-btn:hover { background: #38103a; transform: translateY(-1px); }
         .svl-insight-btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
         .svl-insight-ico {
             flex: none; width: 50px; height: 50px; border-radius: 50%;
@@ -1336,7 +1338,7 @@
         }
         .svl-list-ico {
             flex: none; width: 26px; height: 26px; border-radius: 7px;
-            background: #e9f0ff; color: #3a6df0; display: flex; align-items: center; justify-content: center;
+            background: #f6ecf7; color: #4b164c; display: flex; align-items: center; justify-content: center;
             font-size: 13px;
         }
         .svl-cards { display: flex; flex-direction: column; gap: 16px; }
@@ -1367,16 +1369,16 @@
             padding: 11px 16px;
         }
         .svl-col-head { display: flex; align-items: center; gap: 6px; }
-        .svl-col-ico { display: inline-flex; flex: none; color: #3a6df0; }
+        .svl-col-ico { display: inline-flex; flex: none; color: #4b164c; }
         .svl-col-ico svg { width: 15px; height: 15px; display: block; }
         .svl-col-label { font-size: 12.5px; color: #8b90a0; font-weight: 600; }
         .svl-col-value { font-size: 16px; color: #121833; font-weight: 800; letter-spacing: -0.1px; }
         .svl-analyze {
-            flex: none; background: #3a6df0; color: #fff; font-size: 14.5px; font-weight: 700;
+            flex: none; background: #4b164c; color: #fff; font-size: 14.5px; font-weight: 700;
             padding: 11px 22px; border-radius: 999px;
             transition: background 0.15s ease;
         }
-        .video-card.svl-card:hover .svl-analyze { background: #2c5be0; }
+        .video-card.svl-card:hover .svl-analyze { background: #38103a; }
         .svl-note {
             margin: 24px 0 0; text-align: center; font-size: 13px; color: #abafbe;
         }
@@ -1411,7 +1413,7 @@
     <div class="page">
         <!-- Top bar (화면5: 중앙 워드마크 + 구분선) -->
         <div class="svl-topbar">
-            <h1 class="svl-wordmark">MOABOM</h1>
+            <h1 class="svl-wordmark"><img class="svl-logo" src="/static/logo_mark.png" alt="모아봄 로고">MOABOM</h1>
         </div>
         <hr class="svl-divider">
 
@@ -3409,9 +3411,9 @@
                     datasets: [{
                         label: '점수',
                         data: values,
-                        backgroundColor: 'rgba(111,66,193,0.12)',
-                        borderColor: 'rgba(111,66,193,0.75)',
-                        pointBackgroundColor: 'rgba(111,66,193,1)',
+                        backgroundColor: 'rgba(75,22,76,0.12)',
+                        borderColor: 'rgba(75,22,76,0.75)',
+                        pointBackgroundColor: 'rgba(75,22,76,1)',
                         pointRadius: 3,
                         borderWidth: 2,
                     }]
@@ -3426,8 +3428,8 @@
                                 stepSize: 2, font: { size: 9 },
                                 color: '#6b6880', backdropColor: 'transparent',
                             },
-                            grid: { color: 'rgba(111,66,193,0.1)' },
-                            angleLines: { color: 'rgba(111,66,193,0.18)' },
+                            grid: { color: 'rgba(75,22,76,0.1)' },
+                            angleLines: { color: 'rgba(75,22,76,0.18)' },
                             pointLabels: {
                                 font: { size: 11, family: 'Pretendard, sans-serif' },
                                 color: '#1f1c2e',

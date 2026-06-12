@@ -4,6 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>모아봄 — 유튜브 테크 리뷰 종합 분석</title>
+    <link rel="icon" type="image/png" href="/static/favicon.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -26,16 +27,16 @@
             --muted: #8b90a0;
             --muted-2: #abafbe;
 
-            /* primary (blue) */
-            --primary: #3a6df0;
-            --primary-strong: #2c5be0;
-            --primary-soft: #e9f0ff;
+            /* primary (brand plum) */
+            --primary: #4b164c;
+            --primary-strong: #38103a;
+            --primary-soft: #f6ecf7;
 
             /* chips / badges */
-            --chip-bg: #eaf0fb;
-            --chip-text: #4b5573;
-            --badge-blue-bg: #e6eeff;
-            --badge-blue-text: #3a6df0;
+            --chip-bg: #f3ecf5;
+            --chip-text: #5d4b66;
+            --badge-blue-bg: #f1e4f2;
+            --badge-blue-text: #4b164c;
             --badge-green-bg: #e6f4ea;
             --badge-green-text: #137333;
             --badge-amber-bg: #fef3c7;
@@ -91,6 +92,7 @@
                같은 크기만큼 보정 → 아래 카드/카피 좌측 시작선과 정렬 */
             margin-left: 0.03em;
         }
+        .hero-logo { width: 72px; height: 72px; display: block; margin-bottom: 18px; }
         .tagline { font-size: 24px; font-weight: 700; color: var(--text-strong); margin: 0 0 14px; letter-spacing: -0.01em; }
         .tagline b { font-weight: 800; }
         .subcopy { font-size: 16px; color: var(--muted); margin: 0 0 40px; }
@@ -370,7 +372,7 @@
         .vs-mode-card:hover { border-color: var(--primary); }
         .vs-mode-card:has(input:checked) {
             border-color: var(--primary); background: var(--primary-soft);
-            box-shadow: 0 0 0 3px rgba(58, 109, 240, 0.12);
+            box-shadow: 0 0 0 3px rgba(75, 22, 76, 0.12);
         }
         .vs-mode-card:has(input:checked) .vsm-title { color: var(--primary-strong); }
         .vs-slider-group { display: flex; flex-direction: column; gap: 22px; margin-bottom: 30px; }
@@ -643,6 +645,7 @@
             <div class="hero-grid">
                 <!-- 좌: 브랜드 -->
                 <div class="brand-col">
+                    <img class="hero-logo" src="/static/logo_mark.png" alt="모아봄 로고">
                     <h1 class="wordmark">MOABOM</h1>
                     <p class="tagline">흩어진 테크 리뷰를 한 번에 모아보는 <b>AI 리포트</b></p>
                     <p class="subcopy">유튜브 자막·댓글을 분석해 제품별 핵심 의견을 빠르게 확인하세요.</p>

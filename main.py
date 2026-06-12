@@ -17,6 +17,7 @@ from pathlib import Path
 # Force UTF-8 stdout so Korean text and emoji print correctly on Windows cp949 consoles
 sys.stdout.reconfigure(encoding="utf-8")
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -56,6 +57,9 @@ app.add_middleware(UsageTrackingMiddleware)
 # Ensure templates directory exists
 TEMPLATES_DIR = Path("templates")
 TEMPLATES_DIR.mkdir(exist_ok=True)
+
+# Static assets (logo, favicon)
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
 @app.on_event("startup")
