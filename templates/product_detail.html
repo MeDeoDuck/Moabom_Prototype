@@ -2152,51 +2152,86 @@
             return ids;
         }
 
-        // ── Progress overlay state ───────────────────────────
-        let pirProgressTimer = null;
-        let pirStepTimers = [];
+        // ── Progress overlay state (실연동) ──────────────────
+        //   /products/{id}/integrated-insight/progress 폴링으로 실제 백엔드 단계에 연동.
+        //   phase 흐름: start → (comments_heal) → reports → synthesize → save → finished.
+        //   budget 은 실측 122s(reports~65s + synthesize~35s) 기반. 2개 표시 step 에 매핑.
+        const PIR_PHASES = {
+            start:         { step: 0, base: 0,  span: 5,  budget: 2000 },
+            comments_heal: { step: 0, base: 5,  span: 15, budget: 20000 },
+            reports:       { step: 0, base: 20, span: 55, budget: 65000 },
+            synthesize:    { step: 1, base: 75, span: 22, budget: 35000 },
+            save:          { step: 1, base: 97, span: 2,  budget: 1500 },
+            finished:      { step: 1, base: 99, span: 1,  budget: 500 },
+            error:         { step: 1, base: 99, span: 1,  budget: 500 },
+        };
+        const PIR_EST_MS = 125000; // 폴링 실패 시 remain 표시용 추정 (실측 122s)
+        let pirRaf = null, pirPollTimer = null, pirFinished = false;
+        let pirPhase = 'start', pirShownPct = 0, pirLastFrame = 0;
+
+        function pirUpdateSteps() {
+            const ph = PIR_PHASES[pirPhase] || PIR_PHASES.start;
+            const steps = document.getElementById('pirOverlay').querySelectorAll('.sel-step[data-pir-step]');
+            steps.forEach((s, i) => {
+                s.classList.remove('active', 'done');
+                if (i < ph.step || pirPhase === 'finished') pirCompleteStep(s);
+                else if (i === ph.step) pirActivateStep(s);
+                else s.querySelector('.icon').textContent = s.dataset.pirStep;
+            });
+        }
+
+        function pirFrame(now) {
+            if (pirFinished) return;
+            const dt = pirLastFrame ? (now - pirLastFrame) : 0;
+            pirLastFrame = now;
+            const ph = PIR_PHASES[pirPhase] || PIR_PHASES.start;
+            const floor = ph.base;
+            const ceil = ph.base + ph.span * 0.97;
+            const speed = ph.span / ph.budget; // 단계 예산 기반 드리프트 (%/ms)
+            pirShownPct = Math.max(pirShownPct, floor);
+            pirShownPct = Math.min(pirShownPct + speed * dt, Math.max(ceil, pirShownPct));
+            document.getElementById('pirProgressFill').style.width = pirShownPct.toFixed(1) + '%';
+            document.getElementById('pirProgressPercent').textContent = Math.round(pirShownPct) + '%';
+            document.getElementById('pirProgressRemain').textContent =
+                selFmtRemain(PIR_EST_MS * (1 - pirShownPct / 100));
+            pirRaf = requestAnimationFrame(pirFrame);
+        }
+
+        async function pirPoll(productId) {
+            try {
+                const res = await fetch('/products/' + productId + '/integrated-insight/progress');
+                if (!res.ok || pirFinished) return;
+                const p = await res.json();
+                if (!p.phase || p.phase === 'idle' || !PIR_PHASES[p.phase]) return;
+                if (p.phase !== pirPhase) {
+                    pirPhase = p.phase;
+                    pirUpdateSteps();
+                }
+            } catch (e) { /* 폴링 실패 무시 — 드리프트 애니메이션으로 계속 표시 */ }
+        }
 
         function pirStartProgress(estimatedMs, videoCount) {
             const overlay = document.getElementById('pirOverlay');
-            const fill = document.getElementById('pirProgressFill');
-            const pct = document.getElementById('pirProgressPercent');
-            const remain = document.getElementById('pirProgressRemain');
-            const sub = document.getElementById('pirOverlaySub');
+            document.getElementById('pirOverlaySub').textContent =
+                '예상 소요시간: ' + selFmtRemain(estimatedMs) +
+                ' (' + videoCount + '개 영상 기반). 창을 닫지 마세요.';
 
-            sub.textContent = '예상 소요시간: ' + selFmtRemain(estimatedMs) +
-                              ' (' + videoCount + '개 영상 기반). 창을 닫지 마세요.';
-
-            // Reset steps
-            const steps = overlay.querySelectorAll('.sel-step[data-pir-step]');
-            steps.forEach(s => {
-                s.classList.remove('active', 'done');
-                s.querySelector('.icon').textContent = s.dataset.pirStep;
-            });
+            pirFinished = false;
+            pirPhase = 'start';
+            pirShownPct = 0;
+            pirLastFrame = 0;
+            document.getElementById('pirProgressFill').style.width = '0%';
+            document.getElementById('pirProgressPercent').textContent = '0%';
+            document.getElementById('pirProgressRemain').textContent = selFmtRemain(estimatedMs);
+            pirUpdateSteps();
 
             overlay.classList.add('show');
             overlay.setAttribute('aria-hidden', 'false');
             startTipRotation('pirTipText');   // feature/loading-tips
 
-            // Step transitions: step 1 = 0~40% of time, step 2 = 40~100%
-            pirStepTimers.forEach(clearTimeout);
-            pirStepTimers = [];
-            pirActivateStep(steps[0]);
-            pirStepTimers.push(setTimeout(() => {
-                pirCompleteStep(steps[0]);
-                pirActivateStep(steps[1]);
-            }, estimatedMs * 0.4));
-
-            // Progress bar fills 0% → 95% over estimatedMs (snaps to 100% on completion)
-            const startTime = Date.now();
-            if (pirProgressTimer) clearInterval(pirProgressTimer);
-            pirProgressTimer = setInterval(() => {
-                const elapsed = Date.now() - startTime;
-                const ratio = Math.min(elapsed / estimatedMs, 0.95);
-                const percent = Math.floor(ratio * 100);
-                fill.style.width = percent + '%';
-                pct.textContent = percent + '%';
-                remain.textContent = selFmtRemain(Math.max(0, estimatedMs - elapsed));
-            }, 200);
+            pirRaf = requestAnimationFrame(pirFrame);
+            clearInterval(pirPollTimer);
+            pirPollTimer = setInterval(() => pirPoll(PRODUCT_ID), 1500);
         }
 
         function pirActivateStep(el) {
@@ -2211,8 +2246,11 @@
             el.querySelector('.icon').textContent = '✓';
         }
         function pirFinishProgress() {
-            if (pirProgressTimer) { clearInterval(pirProgressTimer); pirProgressTimer = null; }
-            pirStepTimers.forEach(clearTimeout); pirStepTimers = [];
+            pirFinished = true;
+            if (pirRaf) cancelAnimationFrame(pirRaf);
+            pirRaf = null;
+            clearInterval(pirPollTimer);
+            pirPollTimer = null;
 
             const fill = document.getElementById('pirProgressFill');
             const pct = document.getElementById('pirProgressPercent');

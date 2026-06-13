@@ -534,6 +534,16 @@ def init_db():
         );
     """)
 
+    # 종합 인사이트(④ 보고서) 생성 진행상태 — selection_progress 와 동일 패턴.
+    # orchestrator 가 단계 전환 시 phase 를 기록하고 pirOverlay 로딩바가 폴링한다.
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS insight_progress (
+            product_id  INT PRIMARY KEY REFERENCES tech_products(product_id) ON DELETE CASCADE,
+            payload     JSONB NOT NULL,
+            updated_at  TIMESTAMPTZ DEFAULT NOW()
+        );
+    """)
+
     # video_selection_scores: 후보 × run (선정/미선정 + 점수 + rationale)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS video_selection_scores (

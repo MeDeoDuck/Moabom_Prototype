@@ -15,6 +15,7 @@ from typing import List
 
 from orchestrator.freshness import inspect_freshness as _inspect_freshness
 from orchestrator.graph.state import InsightState
+from orchestrator.progress import emit_insight_progress
 from scripts.reports.product_integrated_insight import (
     build_product_integrated_insight_report,
     collect_transcript_reports_for_product,
@@ -84,6 +85,7 @@ async def load_cached(state: InsightState) -> InsightState:
 
 
 async def heal_comments(state: InsightState) -> InsightState:
+    emit_insight_progress(state["product_id"], phase="comments_heal")
     perf = dict(state.get("perf", {}))
     t0 = perf_counter()
     stats = await ensure_comment_analysis_for_videos(
@@ -105,6 +107,7 @@ async def heal_comments(state: InsightState) -> InsightState:
 
 async def ensure_reports(state: InsightState) -> InsightState:
     """ON 경로: ①②③ 보장 + bundle 수집 (ensure_all_reports_for_product)."""
+    emit_insight_progress(state["product_id"], phase="reports")
     perf = dict(state.get("perf", {}))
     t0 = perf_counter()
     bundles = await ensure_all_reports_for_product(
@@ -130,6 +133,7 @@ async def collect_and_heal_parallel(state: InsightState) -> InsightState:
 
     기존 라우트의 asyncio.gather 동작을 byte-for-byte 보존한다.
     """
+    emit_insight_progress(state["product_id"], phase="reports")
     perf = dict(state.get("perf", {}))
     t0 = perf_counter()
     per_video_reports, comment_heal_stats = await asyncio.gather(
@@ -166,6 +170,7 @@ async def mark_insufficient(state: InsightState) -> InsightState:
 
 
 async def synthesize(state: InsightState) -> InsightState:
+    emit_insight_progress(state["product_id"], phase="synthesize")
     perf = dict(state.get("perf", {}))
     t0 = perf_counter()
     report_text, model_used = await asyncio.to_thread(
@@ -187,6 +192,7 @@ async def synthesize(state: InsightState) -> InsightState:
 
 
 async def persist(state: InsightState) -> InsightState:
+    emit_insight_progress(state["product_id"], phase="save")
     perf = dict(state.get("perf", {}))
     t0 = perf_counter()
     report_id = await asyncio.to_thread(
