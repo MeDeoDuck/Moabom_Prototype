@@ -2416,9 +2416,8 @@
             const meta = document.getElementById('integratedInsightMeta');
             const body = document.getElementById('integratedInsightBody');
 
-            const modelLabel = result.model_used ? ('모델: ' + result.model_used) : '';
-            meta.textContent = '분석 영상 ' + result.source_video_count + '개 기반' +
-                               (modelLabel ? ' · ' + modelLabel : '');
+            // 모델명(예: openai/gpt-4.1-...)은 사용자에게 의미 없어 노출하지 않음
+            meta.textContent = '분석 영상 ' + result.source_video_count + '개 기반';
 
             // Server returns sanitized HTML via markdown_to_html — safe to inject.
             _pirDestroyCharts();
