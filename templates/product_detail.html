@@ -1236,7 +1236,7 @@
         /* 선정 영상 목록 */
         .svl-list-head {
             display: flex; align-items: center; gap: 9px; margin: 0 0 16px;
-            font-size: 20px; font-weight: 800; color: #121833;
+            font-size: 20px; font-weight: 800; color: var(--text);
         }
         .svl-list-ico {
             flex: none; width: 26px; height: 26px; border-radius: 7px;
@@ -1246,35 +1246,43 @@
         .svl-cards { display: flex; flex-direction: column; gap: 16px; }
         .video-card.svl-card {
             flex-direction: row; align-items: center; gap: 26px;
-            padding: 16px 20px; border-radius: 20px; border-color: #e7eaf1;
-            background: #fbfcfe;
+            padding: 16px 20px; border-radius: 20px; border-color: var(--border);
+            background: var(--surface);
         }
         .video-card.svl-card:hover {
-            border-color: #c9d6f7; transform: translateY(-2px);
-            box-shadow: 0 10px 28px rgba(28, 35, 64, 0.08);
+            border-color: #d9c2dd; transform: translateY(-2px);
+            box-shadow: 0 10px 28px rgba(31, 28, 46, 0.08);
         }
         .svl-thumb {
             flex: none; position: relative; width: 188px; height: 112px;
-            border-radius: 14px; overflow: hidden; background: #f5f7fb;
+            border-radius: 14px; overflow: hidden; background: var(--surface-soft);
         }
         .svl-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
         .svl-thumb-ph { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: #abafbe; font-size: 26px; }
         .svl-dur {
             position: absolute; right: 7px; bottom: 7px;
             font-size: 12px; font-weight: 700; color: #fff;
-            background: rgba(18, 24, 51, 0.82); padding: 2px 8px; border-radius: 8px;
+            background: rgba(31, 28, 46, 0.82); padding: 2px 8px; border-radius: 8px;
         }
-        .svl-meta { flex: 1; min-width: 0; display: flex; gap: 12px; flex-wrap: wrap; }
+        /* 칩 폭을 내용에 맡기면 행마다 열 시작점이 어긋남 → 고정 비율 grid 로 세로 줄맞춤 */
+        .svl-meta {
+            flex: 1; min-width: 0; display: grid;
+            grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr);
+            gap: 12px;
+        }
         .svl-col {
-            display: flex; flex-direction: column; gap: 6px; min-width: 134px;
-            background: #f5f7fb; border: 1px solid #e7eaf1; border-radius: 14px;
+            display: flex; flex-direction: column; gap: 6px; min-width: 0;
+            background: var(--surface-soft); border: 1px solid var(--border); border-radius: 14px;
             padding: 11px 16px;
         }
         .svl-col-head { display: flex; align-items: center; gap: 6px; }
         .svl-col-ico { display: inline-flex; flex: none; color: #4b164c; }
         .svl-col-ico svg { width: 15px; height: 15px; display: block; }
-        .svl-col-label { font-size: 12.5px; color: #8b90a0; font-weight: 600; }
-        .svl-col-value { font-size: 16px; color: #121833; font-weight: 800; letter-spacing: -0.1px; }
+        .svl-col-label { font-size: 12.5px; color: var(--muted); font-weight: 600; }
+        .svl-col-value {
+            font-size: 16px; color: var(--text); font-weight: 800; letter-spacing: -0.1px;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
         .svl-analyze {
             flex: none; background: #4b164c; color: #fff; font-size: 14.5px; font-weight: 700;
             padding: 11px 22px; border-radius: 999px;
@@ -1293,6 +1301,7 @@
             .svl-insight-btn { justify-content: center; }
             .video-card.svl-card { flex-direction: column; align-items: stretch; }
             .svl-thumb { width: 100%; height: 200px; }
+            .svl-meta { grid-template-columns: 1fr; }
             .svl-analyze { text-align: center; }
         }
 
@@ -1510,7 +1519,7 @@
                                                 <span class="svl-col-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
                                                 <span class="svl-col-label">구독자수</span>
                                             </span>
-                                            <span class="svl-col-value">구독자 {{ fmt_kcount(video.channel_subscriber_count, '명')|trim }}</span>
+                                            <span class="svl-col-value">{{ fmt_kcount(video.channel_subscriber_count, '명')|trim }}</span>
                                         </div>
                                     {% endif %}
                                     {% if video.view_count is not none %}
@@ -1519,7 +1528,7 @@
                                                 <span class="svl-col-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg></span>
                                                 <span class="svl-col-label">조회수</span>
                                             </span>
-                                            <span class="svl-col-value">조회수 {{ fmt_kcount(video.view_count, '회')|trim }}</span>
+                                            <span class="svl-col-value">{{ fmt_kcount(video.view_count, '회')|trim }}</span>
                                         </div>
                                     {% endif %}
                                 </div>
@@ -1645,7 +1654,12 @@
         <div class="sel-overlay-card">
             <div class="sel-spinner"></div>
             <h3 id="selOverlayTitle">AI 영상 선택 진행 중</h3>
-            <div class="sub" id="selOverlaySub">최대 5분 정도 소요됩니다. 창을 닫지 마세요.</div>
+            <div class="sub" id="selOverlaySub">보통 2~3분 정도 걸려요. 창을 닫지 마세요.</div>
+            <div class="pir-progress-bar"><div id="selProgressFill" class="pir-progress-fill"></div></div>
+            <div class="pir-progress-meta">
+                <span><strong id="selProgressPercent">0%</strong></span>
+                <span>예상 남은 시간 <strong id="selProgressRemain">약 2분 30초</strong></span>
+            </div>
             <div class="sel-step" data-step="1"><span class="icon">1</span><span>YouTube 후보 영상 수집</span></div>
             <div class="sel-step" data-step="2"><span class="icon">2</span><span>AI 영상 선정 + 다양성 평가</span></div>
             <div class="sel-step" data-step="3"><span class="icon">3</span><span>댓글 수집 및 감성 분석</span></div>
@@ -1663,12 +1677,12 @@
     <div id="pirOverlay" class="sel-overlay svl-loading" aria-hidden="true">
         <div class="sel-overlay-card">
             <div class="sel-spinner"></div>
-            <h3>🧩 종합 인사이트 보고서 생성 중</h3>
-            <div class="sub" id="pirOverlaySub">예상 소요시간: 약 1~2분. 창을 닫지 마세요.</div>
+            <h3>종합 인사이트 보고서 생성 중</h3>
+            <div class="sub" id="pirOverlaySub">예상 소요시간: 약 2분. 창을 닫지 마세요.</div>
             <div class="pir-progress-bar"><div id="pirProgressFill" class="pir-progress-fill"></div></div>
             <div class="pir-progress-meta">
                 <span><strong id="pirProgressPercent">0%</strong></span>
-                <span>남은 시간 약 <strong id="pirProgressRemain">--</strong>초</span>
+                <span>예상 남은 시간 <strong id="pirProgressRemain">--</strong></span>
             </div>
             <div class="sel-step" data-pir-step="1"><span class="icon">1</span><span>영상별 자막 수집 및 자막 기반 보고서 생성</span></div>
             <div class="sel-step" data-pir-step="2"><span class="icon">2</span><span>7섹션 통합 인사이트 보고서 합성</span></div>
@@ -1687,12 +1701,12 @@
     <div id="vrOverlay" class="sel-overlay svl-loading" aria-hidden="true">
         <div class="sel-overlay-card">
             <div class="sel-spinner"></div>
-            <h3>🎬 영상별 보고서 생성 중</h3>
-            <div class="sub" id="vrOverlaySub">예상 소요시간: 약 3~5분. 창을 닫지 마세요.</div>
+            <h3>영상별 보고서 생성 중</h3>
+            <div class="sub" id="vrOverlaySub">예상 소요시간: 약 1분 이내. 창을 닫지 마세요.</div>
             <div class="pir-progress-bar"><div id="vrProgressFill" class="pir-progress-fill"></div></div>
             <div class="pir-progress-meta">
                 <span><strong id="vrProgressPercent">0%</strong></span>
-                <span>남은 시간 약 <strong id="vrProgressRemain">--</strong>초</span>
+                <span>예상 남은 시간 <strong id="vrProgressRemain">--</strong></span>
             </div>
             <div class="sel-step" data-vr-step="1"><span class="icon">1</span><span>자막 기반 보고서 생성</span></div>
             <div class="sel-step" data-vr-step="2"><span class="icon">2</span><span>댓글 기반 보고서 생성</span></div>
@@ -1756,7 +1770,9 @@
                 : '<div class="sl-thumb-ph">▶</div>';
             const durBadge = dur ? '<span class="sl-duration">' + escapeHtml(dur) + '</span>' : '';
 
-            const reasons = Array.isArray(v.selection_reasons) ? v.selection_reasons.filter(Boolean) : [];
+            // v3 내부 태그(cluster N 등)는 사용자에게 의미 없으므로 표시에서 제외
+            const reasons = (Array.isArray(v.selection_reasons) ? v.selection_reasons.filter(Boolean) : [])
+                .filter(r => !/^cluster[\s_-]*\d+$/i.test(String(r).trim()));
             let reasonRows = '';
             if (reasons.length) {
                 const chips = reasons.map(r => '<span class="sl-chip">' + escapeHtml(r) + '</span>').join('');
@@ -1814,6 +1830,33 @@
 
             overlay.classList.add('show');
             overlay.setAttribute('aria-hidden', 'false');
+        })();
+
+        // ── 새로고침 복원: 진행 중인 영상 선정이 있으면 로딩 모달 재연결 ──
+        //   (로딩 중 새로고침하면 진행상황과의 연결이 끊기던 문제 — progress
+        //    API 기반으로 이어서 표시하고, 완료 감지 시 새 선정 반영 reload)
+        (async function resumeSelectionProgress() {
+            try {
+                const res = await fetch('/products/' + PRODUCT_ID + '/select-videos/progress');
+                if (!res.ok) return;
+                const p = await res.json();
+                const active = p.phase && p.phase !== 'idle' && p.phase !== 'error' && !p.done;
+                // age_s 가 크면 죽은 작업의 잔재 (서버 재시작 등) — 재연결하지 않음
+                if (!active || (p.age_s != null && p.age_s > 120)) return;
+                showSelOverlay(PRODUCT_ID);
+                const t = setInterval(async () => {
+                    try {
+                        const r2 = await fetch('/products/' + PRODUCT_ID + '/select-videos/progress');
+                        if (!r2.ok) return;
+                        const p2 = await r2.json();
+                        if (p2.done || p2.phase === 'error') {
+                            clearInterval(t);
+                            hideSelOverlay();
+                            if (p2.phase === 'finished') location.reload();
+                        }
+                    } catch (e) { /* 일시 실패 무시 */ }
+                }, 3000);
+            } catch (e) { /* 미지원/네트워크 오류 시 조용히 패스 */ }
         })();
 
         // ── Chart instances tracker (destroy before re-render) ───────────
@@ -1941,36 +1984,93 @@
         }
 
         // ── Selection progress overlay helpers ─────────────
-        let selStepTimers = [];
-        function showSelOverlay(steps, estimatedMs, title, sub, labels) {
-            const overlay = document.getElementById('selOverlay');
-            if (title) document.getElementById('selOverlayTitle').textContent = title;
-            if (sub) document.getElementById('selOverlaySub').textContent = sub;
+        //   진행률은 /select-videos/progress 폴링으로 실제 백엔드 단계에 연동
+        //   (홈 화면 vlOverlay 와 동일한 로직·추정치).
+        const SEL_ESTIMATE_MS = 150000; // 실측 e2e 133.5s (선정 57s + 댓글 75s) 기반
+        const SEL_PHASES = {
+            collect:  { step: 0, base: 0,  span: 10, budget: 8000 },
+            rerank:   { step: 1, base: 10, span: 35, budget: 50000 },
+            save:     { step: 1, base: 45, span: 3,  budget: 2500 },
+            comments: { step: 2, base: 48, span: 50, budget: 80000 },
+            finished: { step: 2, base: 98, span: 2,  budget: 1000 },
+            error:    { step: 2, base: 98, span: 2,  budget: 1000 },
+        };
+        let selRaf = null, selPollTimer = null, selFinished = false;
+        let selPhase = 'collect', selShownPct = 0, selLastFrame = 0;
+        let selCommentsDone = 0, selCommentsTotal = null;
 
-            const stepEls = overlay.querySelectorAll('.sel-step');
-            stepEls.forEach((s, idx) => {
+        function selFmtRemain(ms) {
+            if (ms <= 5000) return '마무리 중';
+            const totalSec = Math.ceil(ms / 1000 / 30) * 30; // 30초 단위 반올림
+            const m = Math.floor(totalSec / 60), s = totalSec % 60;
+            if (m <= 0) return '약 ' + s + '초';
+            return s ? '약 ' + m + '분 ' + s + '초' : '약 ' + m + '분';
+        }
+
+        function selUpdateSteps() {
+            const ph = SEL_PHASES[selPhase] || SEL_PHASES.collect;
+            const stepEls = document.getElementById('selOverlay').querySelectorAll('.sel-step');
+            stepEls.forEach((s, i) => {
                 s.classList.remove('active', 'done');
-                s.querySelector('.icon').textContent = s.dataset.step;
-                s.style.display = (parseInt(s.dataset.step, 10) <= steps) ? 'flex' : 'none';
-                const spans = s.querySelectorAll('span');
-                if (spans[1]) {
-                    if (!s.dataset.originalLabel) s.dataset.originalLabel = spans[1].textContent;
-                    spans[1].textContent = (labels && labels[idx]) ? labels[idx] : s.dataset.originalLabel;
-                }
+                if (i < ph.step || selPhase === 'finished') completeStep(s);
+                else if (i === ph.step) activateStep(s);
+                else s.querySelector('.icon').textContent = s.dataset.step;
             });
+        }
+
+        function selFrame(now) {
+            if (selFinished) return;
+            const dt = selLastFrame ? (now - selLastFrame) : 0;
+            selLastFrame = now;
+            const ph = SEL_PHASES[selPhase] || SEL_PHASES.collect;
+            let floor = ph.base;
+            let ceil = ph.base + ph.span * 0.97;
+            if (selPhase === 'comments' && selCommentsTotal > 0) {
+                floor = ph.base + ph.span * (selCommentsDone / selCommentsTotal);
+                ceil = ph.base + ph.span * Math.min((selCommentsDone + 0.9) / selCommentsTotal, 0.99);
+            }
+            const speed = ph.span / ph.budget;
+            selShownPct = Math.max(selShownPct, floor);
+            selShownPct = Math.min(selShownPct + speed * dt, Math.max(ceil, selShownPct));
+            document.getElementById('selProgressFill').style.width = selShownPct.toFixed(1) + '%';
+            document.getElementById('selProgressPercent').textContent = Math.round(selShownPct) + '%';
+            document.getElementById('selProgressRemain').textContent =
+                selFmtRemain(SEL_ESTIMATE_MS * (1 - selShownPct / 100));
+            selRaf = requestAnimationFrame(selFrame);
+        }
+
+        async function selPoll(productId) {
+            try {
+                const res = await fetch('/products/' + productId + '/select-videos/progress');
+                if (!res.ok || selFinished) return;
+                const p = await res.json();
+                if (!p.phase || p.phase === 'idle' || !SEL_PHASES[p.phase]) return;
+                if (p.phase !== selPhase) {
+                    selPhase = p.phase;
+                    selUpdateSteps();
+                }
+                selCommentsDone = p.comments_done || 0;
+                selCommentsTotal = p.comments_total || null;
+            } catch (e) { /* 폴링 실패 무시 — 드리프트 애니메이션으로 계속 표시 */ }
+        }
+
+        function showSelOverlay(productId) {
+            const overlay = document.getElementById('selOverlay');
+            selFinished = false;
+            selPhase = 'collect';
+            selShownPct = 0;
+            selLastFrame = 0;
+            selCommentsDone = 0;
+            selCommentsTotal = null;
+            document.getElementById('selProgressFill').style.width = '0%';
+            document.getElementById('selProgressPercent').textContent = '0%';
+            document.getElementById('selProgressRemain').textContent = '약 2분 30초';
+            selUpdateSteps();
             overlay.classList.add('show');
             startTipRotation('selTipText');   // feature/loading-tips
-
-            activateStep(stepEls[0]);
-            const stepDuration = estimatedMs / steps;
-            selStepTimers.forEach(clearTimeout);
-            selStepTimers = [];
-            for (let i = 1; i < steps; i++) {
-                selStepTimers.push(setTimeout(() => {
-                    completeStep(stepEls[i - 1]);
-                    activateStep(stepEls[i]);
-                }, stepDuration * i));
-            }
+            selRaf = requestAnimationFrame(selFrame);
+            clearInterval(selPollTimer);
+            selPollTimer = setInterval(() => selPoll(productId), 1500);
         }
         function activateStep(el) {
             if (!el) return;
@@ -1984,12 +2084,18 @@
             el.querySelector('.icon').textContent = '✓';
         }
         function hideSelOverlay() {
-            selStepTimers.forEach(clearTimeout);
-            selStepTimers = [];
+            selFinished = true;
+            if (selRaf) cancelAnimationFrame(selRaf);
+            selRaf = null;
+            clearInterval(selPollTimer);
+            selPollTimer = null;
             const overlay = document.getElementById('selOverlay');
             overlay.querySelectorAll('.sel-step').forEach(s => {
                 if (s.style.display !== 'none') completeStep(s);
             });
+            document.getElementById('selProgressFill').style.width = '100%';
+            document.getElementById('selProgressPercent').textContent = '100%';
+            document.getElementById('selProgressRemain').textContent = '완료';
             setTimeout(() => overlay.classList.remove('show'), 600);
             stopTipRotation('selTipText');   // feature/loading-tips
         }
@@ -1999,8 +2105,8 @@
             const status = document.getElementById('selStatus');
 
             btn.disabled = true;
-            status.textContent = 'YouTube 후보 수집 → AI 영상 선정 → 댓글 수집·분석 중... (최대 5분)';
-            showSelOverlay(3, 240_000, 'AI 영상 선택 진행 중', '최대 5분 정도 소요됩니다. 창을 닫지 마세요.');
+            status.textContent = 'YouTube 후보 수집 → AI 영상 선정 → 댓글 수집·분석 중... (보통 2~3분)';
+            showSelOverlay(PRODUCT_ID);
 
             try {
                 const response = await fetch('/products/' + PRODUCT_ID + '/select-videos', {
@@ -2046,52 +2152,86 @@
             return ids;
         }
 
-        // ── Progress overlay state ───────────────────────────
-        let pirProgressTimer = null;
-        let pirStepTimers = [];
+        // ── Progress overlay state (실연동) ──────────────────
+        //   /products/{id}/integrated-insight/progress 폴링으로 실제 백엔드 단계에 연동.
+        //   phase 흐름: start → (comments_heal) → reports → synthesize → save → finished.
+        //   budget 은 실측 122s(reports~65s + synthesize~35s) 기반. 2개 표시 step 에 매핑.
+        const PIR_PHASES = {
+            start:         { step: 0, base: 0,  span: 5,  budget: 2000 },
+            comments_heal: { step: 0, base: 5,  span: 15, budget: 20000 },
+            reports:       { step: 0, base: 20, span: 55, budget: 65000 },
+            synthesize:    { step: 1, base: 75, span: 22, budget: 35000 },
+            save:          { step: 1, base: 97, span: 2,  budget: 1500 },
+            finished:      { step: 1, base: 99, span: 1,  budget: 500 },
+            error:         { step: 1, base: 99, span: 1,  budget: 500 },
+        };
+        const PIR_EST_MS = 125000; // 폴링 실패 시 remain 표시용 추정 (실측 122s)
+        let pirRaf = null, pirPollTimer = null, pirFinished = false;
+        let pirPhase = 'start', pirShownPct = 0, pirLastFrame = 0;
+
+        function pirUpdateSteps() {
+            const ph = PIR_PHASES[pirPhase] || PIR_PHASES.start;
+            const steps = document.getElementById('pirOverlay').querySelectorAll('.sel-step[data-pir-step]');
+            steps.forEach((s, i) => {
+                s.classList.remove('active', 'done');
+                if (i < ph.step || pirPhase === 'finished') pirCompleteStep(s);
+                else if (i === ph.step) pirActivateStep(s);
+                else s.querySelector('.icon').textContent = s.dataset.pirStep;
+            });
+        }
+
+        function pirFrame(now) {
+            if (pirFinished) return;
+            const dt = pirLastFrame ? (now - pirLastFrame) : 0;
+            pirLastFrame = now;
+            const ph = PIR_PHASES[pirPhase] || PIR_PHASES.start;
+            const floor = ph.base;
+            const ceil = ph.base + ph.span * 0.97;
+            const speed = ph.span / ph.budget; // 단계 예산 기반 드리프트 (%/ms)
+            pirShownPct = Math.max(pirShownPct, floor);
+            pirShownPct = Math.min(pirShownPct + speed * dt, Math.max(ceil, pirShownPct));
+            document.getElementById('pirProgressFill').style.width = pirShownPct.toFixed(1) + '%';
+            document.getElementById('pirProgressPercent').textContent = Math.round(pirShownPct) + '%';
+            document.getElementById('pirProgressRemain').textContent =
+                selFmtRemain(PIR_EST_MS * (1 - pirShownPct / 100));
+            pirRaf = requestAnimationFrame(pirFrame);
+        }
+
+        async function pirPoll(productId) {
+            try {
+                const res = await fetch('/products/' + productId + '/integrated-insight/progress');
+                if (!res.ok || pirFinished) return;
+                const p = await res.json();
+                if (!p.phase || p.phase === 'idle' || !PIR_PHASES[p.phase]) return;
+                if (p.phase !== pirPhase) {
+                    pirPhase = p.phase;
+                    pirUpdateSteps();
+                }
+            } catch (e) { /* 폴링 실패 무시 — 드리프트 애니메이션으로 계속 표시 */ }
+        }
 
         function pirStartProgress(estimatedMs, videoCount) {
             const overlay = document.getElementById('pirOverlay');
-            const fill = document.getElementById('pirProgressFill');
-            const pct = document.getElementById('pirProgressPercent');
-            const remain = document.getElementById('pirProgressRemain');
-            const sub = document.getElementById('pirOverlaySub');
+            document.getElementById('pirOverlaySub').textContent =
+                '예상 소요시간: ' + selFmtRemain(estimatedMs) +
+                ' (' + videoCount + '개 영상 기반). 창을 닫지 마세요.';
 
-            sub.textContent = '예상 소요시간: 약 ' + Math.ceil(estimatedMs / 60000) +
-                              '분 (' + videoCount + '개 영상 기반). 창을 닫지 마세요.';
-
-            // Reset steps
-            const steps = overlay.querySelectorAll('.sel-step[data-pir-step]');
-            steps.forEach(s => {
-                s.classList.remove('active', 'done');
-                s.querySelector('.icon').textContent = s.dataset.pirStep;
-            });
+            pirFinished = false;
+            pirPhase = 'start';
+            pirShownPct = 0;
+            pirLastFrame = 0;
+            document.getElementById('pirProgressFill').style.width = '0%';
+            document.getElementById('pirProgressPercent').textContent = '0%';
+            document.getElementById('pirProgressRemain').textContent = selFmtRemain(estimatedMs);
+            pirUpdateSteps();
 
             overlay.classList.add('show');
             overlay.setAttribute('aria-hidden', 'false');
             startTipRotation('pirTipText');   // feature/loading-tips
 
-            // Step transitions: step 1 = 0~40% of time, step 2 = 40~100%
-            pirStepTimers.forEach(clearTimeout);
-            pirStepTimers = [];
-            pirActivateStep(steps[0]);
-            pirStepTimers.push(setTimeout(() => {
-                pirCompleteStep(steps[0]);
-                pirActivateStep(steps[1]);
-            }, estimatedMs * 0.4));
-
-            // Progress bar fills 0% → 95% over estimatedMs (snaps to 100% on completion)
-            const startTime = Date.now();
-            if (pirProgressTimer) clearInterval(pirProgressTimer);
-            pirProgressTimer = setInterval(() => {
-                const elapsed = Date.now() - startTime;
-                const ratio = Math.min(elapsed / estimatedMs, 0.95);
-                const percent = Math.floor(ratio * 100);
-                fill.style.width = percent + '%';
-                pct.textContent = percent + '%';
-                const left = Math.max(0, Math.ceil((estimatedMs - elapsed) / 1000));
-                remain.textContent = left;
-            }, 200);
+            pirRaf = requestAnimationFrame(pirFrame);
+            clearInterval(pirPollTimer);
+            pirPollTimer = setInterval(() => pirPoll(PRODUCT_ID), 1500);
         }
 
         function pirActivateStep(el) {
@@ -2106,8 +2246,11 @@
             el.querySelector('.icon').textContent = '✓';
         }
         function pirFinishProgress() {
-            if (pirProgressTimer) { clearInterval(pirProgressTimer); pirProgressTimer = null; }
-            pirStepTimers.forEach(clearTimeout); pirStepTimers = [];
+            pirFinished = true;
+            if (pirRaf) cancelAnimationFrame(pirRaf);
+            pirRaf = null;
+            clearInterval(pirPollTimer);
+            pirPollTimer = null;
 
             const fill = document.getElementById('pirProgressFill');
             const pct = document.getElementById('pirProgressPercent');
@@ -2116,7 +2259,7 @@
 
             fill.style.width = '100%';
             pct.textContent = '100%';
-            remain.textContent = '0';
+            remain.textContent = '완료';
             overlay.querySelectorAll('.sel-step[data-pir-step]').forEach(pirCompleteStep);
 
             // Brief moment so user sees 100% before close
@@ -2174,8 +2317,7 @@
                 const percent = Math.floor(ratio * 100);
                 fill.style.width = percent + '%';
                 pct.textContent = percent + '%';
-                const left = Math.max(0, Math.ceil((estimatedMs - elapsed) / 1000));
-                remain.textContent = left;
+                remain.textContent = selFmtRemain(Math.max(0, estimatedMs - elapsed));
             }, 200);
         }
 
@@ -2234,10 +2376,10 @@
             btn.disabled = true;
             status.textContent = '';
 
-            // Estimate: base 45s for 9-section synthesis + ~50s per video worst case
-            // (자막 fetch ~15s + transcript_report 생성 ~30s) when reports/transcripts are missing.
-            // Floor at 90s (모두 캐시된 best case 가까이), ceil at 360s (= 6분, worst case).
-            const estimatedMs = Math.min(360000, Math.max(90000, 45000 + videoIds.length * 50000));
+            // Estimate: 실측 122s (5개 영상, 선정 직후 자막 캐시·댓글 분석 완료 상태,
+            // 영상별 보고서 self-heal 포함) 기반 — base 40s + 영상당 17s.
+            // Floor 60s, ceil 240s (자막 fetch 가 막히는 worst case 여유).
+            const estimatedMs = Math.min(240000, Math.max(60000, 40000 + videoIds.length * 17000));
             pirStartProgress(estimatedMs, videoIds.length);
 
             try {
@@ -2274,9 +2416,8 @@
             const meta = document.getElementById('integratedInsightMeta');
             const body = document.getElementById('integratedInsightBody');
 
-            const modelLabel = result.model_used ? ('모델: ' + result.model_used) : '';
-            meta.textContent = '분석 영상 ' + result.source_video_count + '개 기반' +
-                               (modelLabel ? ' · ' + modelLabel : '');
+            // 모델명(예: openai/gpt-4.1-...)은 사용자에게 의미 없어 노출하지 않음
+            meta.textContent = '분석 영상 ' + result.source_video_count + '개 기반';
 
             // Server returns sanitized HTML via markdown_to_html — safe to inject.
             _pirDestroyCharts();
@@ -3925,7 +4066,8 @@
                 });
 
                 // 모달 표시 → 즉시 이동. 페이지 전환이 완료 신호 (95% cap).
-                vrStartProgress(300000);
+                // 실측: 보고서 미캐시 48.3s (자막 캐시·댓글 완료 상태), 캐시 시 수 초.
+                vrStartProgress(50000);
 
                 setTimeout(() => { window.location.href = href; }, 50);
             });

@@ -11,21 +11,21 @@
     <style>
         /* ── Design tokens (화면 1에서 최초 정의 — 이후 모든 화면 재사용) ── */
         :root {
-            /* surface / background */
-            --bg: #eceef3;
-            --shell: #fbfcfe;
+            /* surface / background — 상세 페이지(product/video_detail)와 동일 팔레트 */
+            --bg: #f7f5fb;
+            --shell: #fefdff;
             --surface: #ffffff;
-            --surface-soft: #f5f7fb;
+            --surface-soft: #faf7ff;
 
             /* borders */
-            --border: #e7eaf1;
-            --border-strong: #d8dde8;
+            --border: #e7e2f3;
+            --border-strong: #d9d2e9;
 
             /* text */
-            --text: #1c2340;
-            --text-strong: #121833;
-            --muted: #8b90a0;
-            --muted-2: #abafbe;
+            --text: #1f1c2e;
+            --text-strong: #181425;
+            --muted: #6b6880;
+            --muted-2: #a09db1;
 
             /* primary (brand plum) */
             --primary: #4b164c;
@@ -50,9 +50,9 @@
             --radius-pill: 999px;
 
             /* shadow */
-            --shadow-sm: 0 2px 8px rgba(28, 35, 64, 0.05);
-            --shadow: 0 8px 28px rgba(28, 35, 64, 0.07);
-            --shadow-lg: 0 16px 40px rgba(28, 35, 64, 0.12);
+            --shadow-sm: 0 2px 8px rgba(31, 28, 46, 0.05);
+            --shadow: 0 8px 28px rgba(31, 28, 46, 0.07);
+            --shadow-lg: 0 16px 40px rgba(31, 28, 46, 0.12);
         }
 
         * { box-sizing: border-box; }
@@ -63,6 +63,9 @@
             color: var(--text);
             line-height: 1.55;
             -webkit-font-smoothing: antialiased;
+            /* 한국어 어절 단위 줄바꿈 — "도와드려요"가 "도"에서 끊기는 문제 방지 */
+            word-break: keep-all;
+            overflow-wrap: break-word;
         }
         a { color: inherit; text-decoration: none; }
 
@@ -114,7 +117,9 @@
         .pillar .d { font-size: 12.5px; color: var(--muted); line-height: 1.55; }
 
         /* ── 우: 검색 + 추천 ── */
-        .search-col { min-width: 0; }
+        /* 좌측 브랜딩(큰 워드마크) 대비 우측 콘텐츠가 너무 위에 붙어 보이는 문제 →
+           검색바를 살짝 내리고(여기) 추천 리포트는 더 내린다(.reco margin-top). */
+        .search-col { min-width: 0; padding-top: 32px; }
         .search-wrap { position: relative; }
 
         .searchbar {
@@ -187,7 +192,8 @@
         .sc-badge.serper { background: var(--badge-amber-bg); color: var(--badge-amber-text); }
 
         /* ── 추천 리포트 캐러셀 ── */
-        .reco { margin-top: 28px; }
+        /* 추천 리포트 카드 밑라인을 좌측 pillars(3개 박스) 밑라인과 맞춤 (실측 +86px) */
+        .reco { margin-top: 150px; }
         .reco-head {
             display: flex; align-items: center; gap: 8px;
             font-size: 17px; font-weight: 700; color: var(--text-strong); margin-bottom: 16px;
@@ -202,7 +208,9 @@
         .reco-viewport::-webkit-scrollbar { display: none; }
         .reco-track { display: flex; gap: 18px; padding: 4px 4px 8px; }
         .reco-card {
-            flex: 0 0 252px; scroll-snap-align: start;
+            /* 고정폭(252px) 사용 시 뷰포트 폭에 따라 두 번째 카드가 수 px 잘리면서
+               화살표·도트는 1페이지로 계산돼 숨는 문제 → 항상 2장이 꼭 맞게 계산 */
+            flex: 0 0 calc((100% - 18px) / 2); scroll-snap-align: start;
             background: var(--surface);
             border: 1px solid var(--border);
             border-radius: var(--radius-lg);
@@ -220,7 +228,7 @@
         .reco-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
         .reco-thumb-ph {
             width: 100%; height: 100%;
-            background: linear-gradient(135deg, var(--primary-soft), #dbe6ff);
+            background: linear-gradient(135deg, var(--primary-soft), #ecd9f0);
             display: grid; place-items: center;
             color: var(--primary); font-weight: 800; font-size: 26px; letter-spacing: -0.02em;
         }
@@ -260,15 +268,9 @@
         .reco-dots[hidden] { display: none; }
         .reco-dot {
             width: 9px; height: 9px; border-radius: 50%; padding: 0; border: none;
-            background: #cfd4e0; cursor: pointer; transition: background 0.15s, width 0.15s;
+            background: #d5cfe2; cursor: pointer; transition: background 0.15s, width 0.15s;
         }
         .reco-dot.active { background: var(--primary); width: 22px; border-radius: var(--radius-pill); }
-        .reco-hint {
-            display: flex; align-items: center; justify-content: center; gap: 12px;
-            margin-top: 18px; font-size: 14px; font-weight: 600; color: var(--primary);
-        }
-        .reco-hint[hidden] { display: none; }
-        .reco-hint svg { color: var(--primary); }
 
         /* ── 등록된 제품 목록 (SHOW_PRODUCT_LIST=1 일 때만 — 목업 외) ── */
         .section { margin-top: 40px; }
@@ -304,6 +306,9 @@
             .hero-shell { padding: 36px 28px; }
             .hero-grid { grid-template-columns: 1fr; gap: 40px; }
             .wordmark { font-size: 64px; }
+            /* 1단 스택에선 좌/우가 세로로 쌓이므로 검색바·추천 추가 여백 불필요 */
+            .search-col { padding-top: 0; }
+            .reco { margin-top: 28px; }
         }
         @media (max-width: 560px) {
             .page { padding: 24px 16px 56px; }
@@ -528,11 +533,6 @@
                             </button>
                         </div>
                         <div class="reco-dots" id="recoDots" hidden></div>
-                        <div class="reco-hint" id="recoHint" hidden>
-                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-                            좌우로 슬라이드해 더 많은 리포트를 확인하세요
-                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-                        </div>
                     </div>
                     {% endif %}
                 </div>
@@ -565,12 +565,12 @@
         <div class="vl-modal" role="document">
             <div class="vl-spinner" aria-hidden="true"></div>
             <h2 class="vl-title" id="vlTitle">AI 영상 선택 진행 중</h2>
-            <p class="vl-sub">최대 5분 정도 소요됩니다. 창을 닫지 마세요.</p>
+            <p class="vl-sub">보통 2~3분 정도 걸려요. 창을 닫지 마세요.</p>
 
             <div class="vl-progress-box">
                 <div class="vl-progress-meta">
                     <span>진행률 <strong id="vlPercent">0%</strong></span>
-                    <span>예상 남은 시간 <strong id="vlRemain">약 5분</strong></span>
+                    <span>예상 남은 시간 <strong id="vlRemain">약 2분 30초</strong></span>
                 </div>
                 <div class="vl-progress-track"><div class="vl-progress-fill" id="vlFill"></div></div>
             </div>
@@ -792,21 +792,37 @@
         });
 
         // ── AI 영상 선택 로딩 모달 (화면 3) — Auto 선정 진행 중 단독 표시 ──
-        //   진행률은 실데이터가 아닌 타이머 추정 애니메이션(95% 캡, 응답 도착 시 100%).
+        //   진행률은 /select-videos/progress 폴링으로 실제 백엔드 단계에 연동.
+        //   (collect → rerank → save → comments n/N → finished)
         const vlOverlay = document.getElementById('vlOverlay');
         const vlFill = document.getElementById('vlFill');
         const vlPercent = document.getElementById('vlPercent');
         const vlRemain = document.getElementById('vlRemain');
-        const VL_ESTIMATE_MS = 300000; // 추정 5분 (애니메이션 기준값)
+        // 전체 추정 2분 30초 — 로컬 e2e 실측 133.5s (선정 57s + 댓글 75s) 기반.
+        const VL_ESTIMATE_MS = 150000;
+        // 단계별 게이지 구간/예산(ms). step = 모달의 3단계 표시 매핑.
+        const VL_PHASES = {
+            collect:  { step: 0, base: 0,  span: 10, budget: 8000 },
+            rerank:   { step: 1, base: 10, span: 35, budget: 50000 },
+            save:     { step: 1, base: 45, span: 3,  budget: 2500 },
+            comments: { step: 2, base: 48, span: 50, budget: 80000 },
+            finished: { step: 2, base: 98, span: 2,  budget: 1000 },
+            error:    { step: 2, base: 98, span: 2,  budget: 1000 },
+        };
         let vlRaf = null;
-        let vlStepTimers = [];
+        let vlPollTimer = null;
         let vlFinished = false;
+        let vlPhase = 'collect';
+        let vlShownPct = 0;
+        let vlLastFrame = 0;
+        let vlCommentsDone = 0;
+        let vlCommentsTotal = null;
 
         const VL_TIPS = [
             "MOABOM은 '모아서 봄' — 흩어진 리뷰를 한 곳에 모아 보여드려요.",
             "여러 리뷰어의 평가를 교차 검증해 한쪽으로 치우치지 않은 결론을 만들어요.",
             "댓글 속 실사용자 의견까지 분석해 영상에 안 나온 장단점을 찾아내요.",
-            "리뷰어별 성향(엄격·관대)을 보정해 더 공정한 점수를 계산해요.",
+            "같은 의견이 몇 명의 리뷰어에게서 나왔는지 합의 빈도(N/N)로 보여드려요.",
             "조회수가 아니라 리뷰 품질과 채널 다양성으로 영상을 골라요.",
         ];
         let vlTipIdx = 0;
@@ -846,55 +862,94 @@
             }
         }
 
-        function showLoadingModal() {
-            vlFinished = false;
+        // 백엔드 단계 → 모달 3단계 표시 동기화 (comments 는 n/N 카운트 노출)
+        function vlUpdateSteps() {
+            const ph = VL_PHASES[vlPhase] || VL_PHASES.collect;
             const steps = vlOverlay.querySelectorAll('.vl-step');
-            steps.forEach((s, i) => vlSetStep(s, i === 0 ? 'active' : 'wait'));
+            steps.forEach((s, i) => {
+                if (i < ph.step || vlPhase === 'finished') vlSetStep(s, 'done');
+                else if (i === ph.step) vlSetStep(s, 'active');
+                else vlSetStep(s, 'wait');
+            });
+            if (vlPhase === 'comments' && vlCommentsTotal) {
+                const badge = steps[2] && steps[2].querySelector('.vl-step-badge');
+                if (badge) badge.textContent = '진행 중 ' + vlCommentsDone + '/' + vlCommentsTotal;
+            }
+        }
+
+        function vlFmtRemain(ms) {
+            if (ms <= 5000) return '마무리 중';
+            const totalSec = Math.ceil(ms / 1000 / 30) * 30; // 30초 단위 반올림
+            const m = Math.floor(totalSec / 60), s = totalSec % 60;
+            if (m <= 0) return '약 ' + s + '초';
+            return s ? '약 ' + m + '분 ' + s + '초' : '약 ' + m + '분';
+        }
+
+        function vlFrame(now) {
+            if (vlFinished) return;
+            const dt = vlLastFrame ? (now - vlLastFrame) : 0;
+            vlLastFrame = now;
+            const ph = VL_PHASES[vlPhase] || VL_PHASES.collect;
+            // floor = 실제 신호로 확정된 최소 진행률, ceil = 현 단계에서 넘지 않을 상한
+            let floor = ph.base;
+            let ceil = ph.base + ph.span * 0.97;
+            if (vlPhase === 'comments' && vlCommentsTotal > 0) {
+                floor = ph.base + ph.span * (vlCommentsDone / vlCommentsTotal);
+                ceil = ph.base + ph.span * Math.min((vlCommentsDone + 0.9) / vlCommentsTotal, 0.99);
+            }
+            const speed = ph.span / ph.budget; // 단계 예산 기반 자연 드리프트 (%/ms)
+            vlShownPct = Math.max(vlShownPct, floor);
+            vlShownPct = Math.min(vlShownPct + speed * dt, Math.max(ceil, vlShownPct));
+            vlFill.style.width = vlShownPct.toFixed(1) + '%';
+            vlPercent.textContent = Math.round(vlShownPct) + '%';
+            vlRemain.textContent = vlFmtRemain(VL_ESTIMATE_MS * (1 - vlShownPct / 100));
+            vlRaf = requestAnimationFrame(vlFrame);
+        }
+
+        async function vlPoll(productId) {
+            try {
+                const res = await fetch('/products/' + productId + '/select-videos/progress');
+                if (!res.ok || vlFinished) return;
+                const p = await res.json();
+                if (!p.phase || p.phase === 'idle' || !VL_PHASES[p.phase]) return;
+                if (p.phase !== vlPhase) {
+                    vlPhase = p.phase;
+                    vlUpdateSteps();
+                }
+                const done = p.comments_done || 0;
+                if (done !== vlCommentsDone || (p.comments_total || null) !== vlCommentsTotal) {
+                    vlCommentsDone = done;
+                    vlCommentsTotal = p.comments_total || null;
+                    if (vlPhase === 'comments') vlUpdateSteps();
+                }
+            } catch (e) { /* 폴링 실패 무시 — 드리프트 애니메이션으로 계속 표시 */ }
+        }
+
+        function showLoadingModal(productId) {
+            vlFinished = false;
+            vlPhase = 'collect';
+            vlShownPct = 0;
+            vlLastFrame = 0;
+            vlCommentsDone = 0;
+            vlCommentsTotal = null;
+            vlUpdateSteps();
             vlFill.style.width = '0%';
             vlPercent.textContent = '0%';
-            vlRemain.textContent = '약 5분';
+            vlRemain.textContent = '약 2분 30초';
             vlOverlay.classList.add('show');
             vlOverlay.setAttribute('aria-hidden', 'false');
             vlStartTips();
-
-            const startTs = performance.now();
-            const tau = VL_ESTIMATE_MS / 2.5; // 90~95% 부근에서 자연히 감속
-            function frame(now) {
-                if (vlFinished) return;
-                const elapsed = now - startTs;
-                const pct = 95 * (1 - Math.exp(-elapsed / tau)); // 95% 캡
-                vlFill.style.width = pct.toFixed(1) + '%';
-                vlPercent.textContent = Math.round(pct) + '%';
-                const remainMs = VL_ESTIMATE_MS - elapsed;
-                if (remainMs > 60000) {
-                    vlRemain.textContent = '약 ' + Math.ceil(remainMs / 60000) + '분';
-                } else if (remainMs > 0) {
-                    vlRemain.textContent = '약 1분';
-                } else {
-                    vlRemain.textContent = '마무리 중';
-                }
-                vlRaf = requestAnimationFrame(frame);
-            }
-            vlRaf = requestAnimationFrame(frame);
-
-            vlStepTimers.forEach(clearTimeout);
-            vlStepTimers = [];
-            const stepDur = VL_ESTIMATE_MS / steps.length;
-            for (let i = 1; i < steps.length; i++) {
-                vlStepTimers.push(setTimeout(() => {
-                    if (vlFinished) return;
-                    vlSetStep(steps[i - 1], 'done');
-                    vlSetStep(steps[i], 'active');
-                }, stepDur * i));
-            }
+            vlRaf = requestAnimationFrame(vlFrame);
+            clearInterval(vlPollTimer);
+            vlPollTimer = setInterval(() => vlPoll(productId), 1500);
         }
 
         function vlStopTimers() {
             vlFinished = true;
             if (vlRaf) cancelAnimationFrame(vlRaf);
             vlRaf = null;
-            vlStepTimers.forEach(clearTimeout);
-            vlStepTimers = [];
+            clearInterval(vlPollTimer);
+            vlPollTimer = null;
             vlStopTips();
         }
 
@@ -918,7 +973,7 @@
 
         // 선정 진행: 로딩 모달 표시 + select-videos(auto 고정, k/pool 백엔드 기본값)
         async function vsProceed(productId) {
-            showLoadingModal();
+            showLoadingModal(productId);
             try {
                 const selRes = await fetch('/products/' + productId + '/select-videos', {
                     method: 'POST',
@@ -957,7 +1012,6 @@
             const track = document.getElementById('recoTrack');
             const nextBtn = document.getElementById('recoNext');
             const dotsEl = document.getElementById('recoDots');
-            const hintEl = document.getElementById('recoHint');
             if (!viewport || !track) return;
 
             function step() {
@@ -987,7 +1041,6 @@
                 const multi = count > 1;
                 nextBtn.hidden = !multi;
                 dotsEl.hidden = !multi;
-                hintEl.hidden = !multi;
                 dotsEl.innerHTML = '';
                 if (!multi) return;
                 const active = activeIndex();

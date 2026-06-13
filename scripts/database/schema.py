@@ -524,6 +524,26 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_selection_runs_product ON video_selection_runs(product_id);
     """)
 
+    # select-videos 진행상태 (로딩바 실연동용 폴링 — in-memory 대신 DB 를 쓰는 이유:
+    # 운영 min 2 replica 라 폴링 요청이 작업 중인 replica 에 안 떨어질 수 있음)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS selection_progress (
+            product_id  INT PRIMARY KEY REFERENCES tech_products(product_id) ON DELETE CASCADE,
+            payload     JSONB NOT NULL,
+            updated_at  TIMESTAMPTZ DEFAULT NOW()
+        );
+    """)
+
+    # 종합 인사이트(④ 보고서) 생성 진행상태 — selection_progress 와 동일 패턴.
+    # orchestrator 가 단계 전환 시 phase 를 기록하고 pirOverlay 로딩바가 폴링한다.
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS insight_progress (
+            product_id  INT PRIMARY KEY REFERENCES tech_products(product_id) ON DELETE CASCADE,
+            payload     JSONB NOT NULL,
+            updated_at  TIMESTAMPTZ DEFAULT NOW()
+        );
+    """)
+
     # video_selection_scores: 후보 × run (선정/미선정 + 점수 + rationale)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS video_selection_scores (

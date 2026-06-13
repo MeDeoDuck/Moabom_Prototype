@@ -3,6 +3,7 @@ Product-related API routes
 """
 import asyncio
 import os
+import time
 from datetime import datetime
 from time import perf_counter
 
@@ -26,6 +27,7 @@ from scripts.reports.product_integrated_insight import (
 from scripts.api.suggest import suggest as suggest_products
 from scripts.utils.markdown_renderer import markdown_to_html
 from orchestrator import run_insight_supervisor
+from orchestrator.progress import emit_insight_progress
 
 templates = Jinja2Templates(directory="templates")
 
@@ -359,24 +361,43 @@ def register_product_routes(app):
 
         route_t0 = perf_counter()
 
+        # 진행상태 초기화 (pirOverlay 실연동 — orchestrator 노드가 phase 를 채운다)
+        emit_insight_progress(
+            product_id,
+            fresh=True,
+            phase="start",
+            done=False,
+            started_at=time.time(),
+            error=None,
+        )
+
         # ── Supervisor 오케스트레이션 (orchestrator/) ───────────────────
         # 기존 self-healing 함수(자막 ①·댓글 agent·①②③ 보장)와 build/save 를
         # LangGraph Supervisor 그래프가 지휘한다. 캐시·fetch 판단은 단일 Freshness
         # 정책으로 통합되며, 동일 조합 + 입력 전부 신선 시 기존 ④ 를 즉시 반환한다
         # (force=true 면 강제 재생성). 기존 함수 내부·YouTube API 는 일절 수정 안 함.
-        result = await run_insight_supervisor(
-            product_id=product_id,
-            product_name=product["name"],
-            video_ids=video_ids,
-            selected_video_count=len(video_ids),
-            force=bool((data or {}).get("force", False)),
-        )
+        try:
+            result = await run_insight_supervisor(
+                product_id=product_id,
+                product_name=product["name"],
+                video_ids=video_ids,
+                selected_video_count=len(video_ids),
+                force=bool((data or {}).get("force", False)),
+            )
+        except Exception as exc:  # noqa: BLE001 — 진행상태만 마감하고 그대로 전파
+            emit_insight_progress(product_id, phase="error", done=True, error=str(exc)[:200])
+            raise
 
         if result.get("error") == "insufficient_reports":
+            emit_insight_progress(
+                product_id, phase="error", done=True, error="insufficient_reports"
+            )
             raise HTTPException(
                 status_code=400,
                 detail="자막 기반 보고서를 생성할 수 있는 영상이 2개 이상 필요합니다 (자막 부재 영상 제외 후 부족)",
             )
+
+        emit_insight_progress(product_id, phase="finished", done=True)
 
         perf = result.get("perf", {})
         llm_detail = perf.get("llm_detail", {}) or {}
@@ -452,6 +473,20 @@ def register_product_routes(app):
             "model_used": latest.get("model_used"),
             "created_at": latest.get("created_at").isoformat() if latest.get("created_at") else None,
         }
+
+    @app.get("/products/{product_id}/integrated-insight/progress")
+    async def integrated_insight_progress(product_id: int) -> dict:
+        """종합 인사이트 생성 진행상태 폴링 (pirOverlay 실연동). 기록 없으면 idle."""
+        row = query_one(
+            """SELECT payload, EXTRACT(EPOCH FROM (NOW() - updated_at)) AS age_s
+               FROM insight_progress WHERE product_id = %s""",
+            (product_id,),
+        )
+        if not row or not row.get("payload"):
+            return {"phase": "idle"}
+        payload = dict(row["payload"])
+        payload["age_s"] = round(float(row.get("age_s") or 0), 1)
+        return payload
 
     @app.get("/products/{product_id}/popup-summary")
     async def get_product_popup_summary(product_id: int):

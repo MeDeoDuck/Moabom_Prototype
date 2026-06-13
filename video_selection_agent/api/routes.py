@@ -9,17 +9,18 @@ GET  /products/{product_id}/selection-runs/{run_id}
 """
 from __future__ import annotations
 
+import json
 import os
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout, as_completed
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 from uuid import UUID
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from scripts.database.queries import query_one
+from scripts.database.queries import execute_update, query_one
 from video_selection_agent.activation import (
     apply_v3_selection,
     run_v3_sync,
@@ -44,6 +45,33 @@ class SelectVideosRequest(BaseModel):
     # Custom 직접 선택 모드와 k/pool 파라미터는 v1 피드백으로 제거됨.
     # 구 클라이언트가 보내는 잔여 필드(mode/k 등)는 Pydantic이 무시한다.
     process_comments: bool = True
+
+
+# ── select-videos 진행상태 (로딩바 실연동) ──────────────────────────────
+# DB(selection_progress) 에 UPSERT — 운영 min 2 replica 환경에서 폴링 GET 이
+# 작업 중인 replica 와 다른 곳에 떨어져도 진행상태를 읽을 수 있게 한다.
+# 진행 표시는 best-effort: 실패해도 선정 본류에 영향을 주지 않는다.
+
+def _progress_update(product_id: int, *, fresh: bool = False, **fields: Any) -> None:
+    try:
+        payload: dict = {}
+        if not fresh:
+            row = query_one(
+                "SELECT payload FROM selection_progress WHERE product_id = %s",
+                (product_id,),
+            )
+            if row and row.get("payload"):
+                payload = dict(row["payload"])
+        payload.update(fields)
+        execute_update(
+            """INSERT INTO selection_progress (product_id, payload, updated_at)
+               VALUES (%s, %s, NOW())
+               ON CONFLICT (product_id) DO UPDATE SET
+                   payload = EXCLUDED.payload, updated_at = NOW()""",
+            (product_id, json.dumps(payload, ensure_ascii=False)),
+        )
+    except Exception as exc:  # noqa: BLE001
+        print(f"[select_progress] update failed (ignored): {exc}")
 
 
 _FALLBACK_POSITIVE_KEYWORDS = {
@@ -125,15 +153,31 @@ def _fallback_collect_comments(video_id: str) -> int:
     return inserted
 
 
-def _process_comments_for_videos(product_name: str, video_ids: Iterable[str]) -> None:
+def _process_comments_for_videos(
+    product_name: str,
+    video_ids: Iterable[str],
+    on_video_done: Callable[[int, int], None] | None = None,
+) -> None:
     """선정된 영상들에 대해 댓글 수집·LLM 분류·감정 분석 파이프라인을 실행.
 
     Agent(`comment_filtering_agent`) 사용 가능 시 정확도 높은 LLM 경로로 병렬 처리,
     불가 시 단순 YouTube API 수집 + 키워드 sentiment 로 graceful degrade.
+    `on_video_done(done, total)` 은 영상 1개 처리 완료마다 호출 (진행 표시용).
     """
     ids = [vid for vid in video_ids if vid]
     if not ids:
         return
+
+    done_count = 0
+
+    def _notify_done() -> None:
+        nonlocal done_count
+        done_count += 1
+        if on_video_done is not None:
+            try:
+                on_video_done(done_count, len(ids))
+            except Exception:  # noqa: BLE001 — 진행 표시 실패가 본류를 막지 않게
+                pass
 
     agent_available = False
     parallel_workers = 3
@@ -173,11 +217,13 @@ def _process_comments_for_videos(product_name: str, video_ids: Iterable[str]) ->
                     )
                     n = _fallback_collect_comments(vid)
                     print(f"[SELECT] [{vid}] Fallback collected={n}")
+                _notify_done()
     else:
         print(f"[SELECT] Comment processing start (fallback): videos={len(ids)}")
         for vid in ids:
             n = _fallback_collect_comments(vid)
             print(f"[SELECT] [{vid}] Fallback collected={n}")
+            _notify_done()
 
 
 def _decision_to_response(decision: Any) -> dict:
@@ -261,8 +307,7 @@ def _maybe_launch_coarse_shadow(decision: SelectionDecision) -> None:
 def register_selection_routes(app: FastAPI) -> None:
     """main.py에서 1회 호출."""
 
-    @app.post("/products/{product_id}/select-videos")
-    async def select_videos(product_id: int, request: SelectVideosRequest) -> dict:
+    def _run_select_videos(product_id: int, request: SelectVideosRequest) -> dict:
         product = query_one(
             "SELECT * FROM tech_products WHERE product_id = %s", (product_id,)
         )
@@ -289,6 +334,7 @@ def register_selection_routes(app: FastAPI) -> None:
         strategy_effective = strategy
         shadow_result = None
         if strategy == V3_CLUSTER:
+            _progress_update(product_id, phase="rerank")
             try:
                 # latency 상한 가드: 자막 fetch 가 막히면 v3 가 90s+ 걸릴 수 있음
                 # (실측). 상한 초과 시 포기하고 v1 반환 — 속도(P0) 보호.
@@ -308,6 +354,7 @@ def register_selection_routes(app: FastAPI) -> None:
                 print(f"[select_videos] v3 sync failed, v1 fallback: {e}", flush=True)
                 strategy_effective = V1_WEIGHTED
         latency_ms = int((time.perf_counter() - t0) * 1000)
+        _progress_update(product_id, phase="save")
 
         selected_ids = {v.video_id for v in decision.selected}
         all_scores = {
@@ -387,12 +434,66 @@ def register_selection_routes(app: FastAPI) -> None:
             _maybe_launch_coarse_shadow(decision)
 
         if request.process_comments:
+            selected_video_ids = [v.video_id for v in decision.selected]
+            _progress_update(
+                product_id,
+                phase="comments",
+                comments_done=0,
+                comments_total=len(selected_video_ids),
+            )
             _process_comments_for_videos(
                 product_name=context.name,
-                video_ids=[v.video_id for v in decision.selected],
+                video_ids=selected_video_ids,
+                on_video_done=lambda done, total: _progress_update(
+                    product_id, comments_done=done, comments_total=total
+                ),
             )
 
         return _decision_to_response(decision)
+
+    @app.post("/products/{product_id}/select-videos")
+    def select_videos(product_id: int, request: SelectVideosRequest) -> dict:
+        """동기 def — FastAPI 가 threadpool 에서 실행해 이벤트 루프를 막지 않는다.
+
+        (기존 async def 는 내부가 전부 블로킹 호출이라 선정이 도는 동안 같은
+        replica 의 모든 요청이 멈췄고, 진행상태 폴링도 불가능했다.)
+        """
+        _progress_update(
+            product_id,
+            fresh=True,
+            phase="collect",
+            done=False,
+            started_at=time.time(),
+            comments_done=0,
+            comments_total=None,
+            error=None,
+        )
+        try:
+            result = _run_select_videos(product_id, request)
+        except HTTPException as exc:
+            _progress_update(
+                product_id, phase="error", done=True, error=str(exc.detail)[:200]
+            )
+            raise
+        except Exception as exc:  # noqa: BLE001
+            _progress_update(product_id, phase="error", done=True, error=str(exc)[:200])
+            raise
+        _progress_update(product_id, phase="finished", done=True)
+        return result
+
+    @app.get("/products/{product_id}/select-videos/progress")
+    async def select_videos_progress(product_id: int) -> dict:
+        """진행상태 폴링 (로딩바 실연동). 기록이 없으면 idle."""
+        row = query_one(
+            """SELECT payload, EXTRACT(EPOCH FROM (NOW() - updated_at)) AS age_s
+               FROM selection_progress WHERE product_id = %s""",
+            (product_id,),
+        )
+        if not row or not row.get("payload"):
+            return {"phase": "idle"}
+        payload = dict(row["payload"])
+        payload["age_s"] = round(float(row.get("age_s") or 0), 1)
+        return payload
 
     @app.get("/products/{product_id}/selection-runs/{run_id}")
     async def get_selection_run(product_id: int, run_id: UUID) -> dict:
