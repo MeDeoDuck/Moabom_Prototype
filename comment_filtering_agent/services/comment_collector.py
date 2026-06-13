@@ -7,6 +7,8 @@ from typing import List, Dict, Optional
 from datetime import datetime
 import uuid
 
+from scripts.youtube.api_keys import current_key, is_google_quota_error, rotate
+
 logger = logging.getLogger(__name__)
 
 
@@ -69,7 +71,9 @@ class YouTubeCommentCollector:
         Args:
             api_key: YouTube Data API 키 (없으면 환경 변수 사용)
         """
-        self.api_key = api_key or os.getenv("YOUTUBE_API_KEY")
+        # 키 풀 커서에서 시작(이미 rotate 됐으면 그 키). quota 시 _list_comment_threads
+        # 가 다음 키로 client 를 재생성한다 — .env 에 키만 채우면 자동 rotation.
+        self.api_key = api_key or current_key()
         if not self.api_key:
             logger.warning("YOUTUBE_API_KEY not set, using mock mode")
             self.api_available = False
@@ -111,18 +115,18 @@ class YouTubeCommentCollector:
         batch_id = str(uuid.uuid4())
         
         try:
-            # 댓글 스레드 요청
-            request = self.youtube.commentThreads().list(
+            # 댓글 스레드 요청 (kwargs 로 보관 → quota rotation 시 새 client 로 재요청)
+            kwargs = dict(
                 part="snippet,replies",
                 videoId=video_id,
                 maxResults=min(max_results, 100),
                 textFormat="plainText",
-                order="relevance"
+                order="relevance",
             )
-            
-            while request and len(comments) < max_results:
-                response = request.execute()
-                
+
+            while kwargs and len(comments) < max_results:
+                response = self._list_comment_threads(**kwargs)
+
                 for item in response.get('items', []):
                     # 최상위 댓글
                     top_comment = self._parse_comment(
@@ -131,30 +135,49 @@ class YouTubeCommentCollector:
                         batch_id
                     )
                     comments.append(top_comment)
-                    
+
                     if len(comments) >= max_results:
                         break
-                
+
                 # 다음 페이지
                 if 'nextPageToken' in response and len(comments) < max_results:
-                    request = self.youtube.commentThreads().list(
+                    kwargs = dict(
                         part="snippet,replies",
                         videoId=video_id,
                         maxResults=min(max_results - len(comments), 100),
                         pageToken=response['nextPageToken'],
                         textFormat="plainText",
-                        order="relevance"
+                        order="relevance",
                     )
                 else:
-                    request = None
-            
+                    kwargs = None
+
             logger.info(f"Collected {len(comments)} comments")
             return comments
-            
+
         except Exception as e:
             logger.error(f"Failed to collect comments: {e}")
             raise
-    
+
+    def _list_comment_threads(self, **kwargs) -> dict:
+        """commentThreads().list(**kwargs).execute() + quota(403) failover.
+
+        quotaExceeded 면 다음 키로 youtube client 를 재생성해 재시도한다(키 풀 공유
+        커서). quota 가 아니거나 키가 소진되면 원래 예외를 그대로 올린다.
+        """
+        while True:
+            try:
+                return self.youtube.commentThreads().list(**kwargs).execute()
+            except Exception as e:
+                if not is_google_quota_error(e):
+                    raise
+                nxt = rotate(self.api_key)
+                if not nxt or nxt == self.api_key:
+                    raise                       # 더 쓸 키 없음 → 기존 동작대로 전파
+                self.api_key = nxt
+                from googleapiclient.discovery import build
+                self.youtube = build('youtube', 'v3', developerKey=self.api_key)
+
     def _parse_comment(self, comment_data: dict, video_id: str, batch_id: str) -> Comment:
         """API 응답을 Comment 객체로 변환"""
         snippet = comment_data['snippet']

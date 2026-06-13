@@ -360,7 +360,8 @@ def process_comments_with_agent(video_id, product_name):
     batch_id = str(uuid.uuid4())
 
     # Initialize components — 분류기/분석기는 환경변수에서 Azure 설정을 직접 읽는다.
-    collector = YouTubeCommentCollector(api_key=YOUTUBE_API_KEY)
+    # 수집기는 키 풀 커서에서 시작(미지정 → current_key). quota 시 내부에서 자동 rotate.
+    collector = YouTubeCommentCollector()
     rule_filter = RuleBasedFilter(config=RuleConfig(
         enable_url_check=False,        # URL 포함 댓글도 LLM 판단에 맡김
         enable_duplicate_check=False,  # Spark에서 이미 exact dedup 처리
