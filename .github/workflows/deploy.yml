@@ -4,8 +4,8 @@ name: Deploy to Azure Container Apps
 # 검증이 통과하면 아래 push 블록 주석을 해제해 main push 자동 배포로 전환한다.
 on:
   workflow_dispatch:
-  # push:
-  #   branches: [main]
+  push:
+    branches: [main]
 
 # 같은 ref의 배포를 직렬화한다. 진행 중 배포는 중간에 죽이면 ca-moabom이
 # half-updated 상태가 될 수 있어 취소하지 않는다(cancel-in-progress: false).
