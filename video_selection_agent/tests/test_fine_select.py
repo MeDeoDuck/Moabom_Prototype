@@ -67,9 +67,45 @@ def test_non_mega_floor_swaps():
 
 
 def test_fallback_when_under_k():
+    # 후보 2개 < k_min(3) → 진짜 부족이라 fallback(v1 복귀)
     cands = [_c("a", fit=0.9), _c("b", fit=0.5)]
     r = verify_and_select(cands, VerifyPolicy(k=5))
     assert r["fallback"] is True and len(r["selected"]) == 2
+
+
+def test_fill_relaxes_mega_cap():
+    # mega 3(채널 서로 다름) + mid 2, k=5, mega_cap=⌈5·0.4⌉=2.
+    # greedy 는 mega 2 + mid 2 = 4 에서 멈춤(3번째 mega 는 캡). graceful fill 이
+    # 가장 싼 위반(mega 캡)으로 3번째 mega 를 채워 5개 완성 → fallback 아님.
+    cands = [_c(f"m{i}", fit=0.9, tier="mega", ch=f"c{i}", cluster=i) for i in range(3)]
+    cands += [_c(f"x{i}", fit=0.5, tier="mid", ch=f"d{i}", cluster=10 + i) for i in range(2)]
+    r = verify_and_select(cands, VerifyPolicy(k=5))
+    assert len(r["selected"]) == 5
+    assert r["fallback"] is False
+    assert r["relaxed"] is True and r["filled"] == 1
+    assert r["stats"]["mega"] == 3            # 3번째 mega 가 완화 채움됨
+
+
+def test_fill_relaxes_channel_cap():
+    # 한 채널 4개 고득점 + 타채널 1개, k=5, max_per_channel=2.
+    # greedy 는 same 2 + other 1 = 3 에서 멈춤. fill 이 채널캡 완화로 same 를 더 채워 5개.
+    cands = [_c(f"s{i}", fit=0.9, ch="same", cluster=i) for i in range(4)]
+    cands += [_c("o0", fit=0.4, ch="other", cluster=9)]
+    r = verify_and_select(cands, VerifyPolicy(k=5))
+    assert len(r["selected"]) == 5
+    assert r["fallback"] is False
+    assert r["relaxed"] is True and r["filled"] == 2
+
+
+def test_accepts_partial_at_kmin_without_fallback():
+    # 후보 3개뿐, k=5 → 풀 고갈은 fallback 아님(>=k_min). activation 이 >=3 수용.
+    cands = [_c("a", fit=0.9, ch="x", cluster=0),
+             _c("b", fit=0.6, ch="y", cluster=1),
+             _c("c", fit=0.5, ch="z", cluster=2)]
+    r = verify_and_select(cands, VerifyPolicy(k=5))
+    assert len(r["selected"]) == 3
+    assert r["fallback"] is False
+    assert r["relaxed"] is False and r["filled"] == 0
 
 
 def test_higher_score_preferred_and_deterministic():
