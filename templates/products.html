@@ -117,7 +117,9 @@
         .pillar .d { font-size: 12.5px; color: var(--muted); line-height: 1.55; }
 
         /* ── 우: 검색 + 추천 ── */
-        .search-col { min-width: 0; }
+        /* 좌측 브랜딩(큰 워드마크) 대비 우측 콘텐츠가 너무 위에 붙어 보이는 문제 →
+           검색바를 살짝 내리고(여기) 추천 리포트는 더 내린다(.reco margin-top). */
+        .search-col { min-width: 0; padding-top: 32px; }
         .search-wrap { position: relative; }
 
         .searchbar {
@@ -190,7 +192,7 @@
         .sc-badge.serper { background: var(--badge-amber-bg); color: var(--badge-amber-text); }
 
         /* ── 추천 리포트 캐러셀 ── */
-        .reco { margin-top: 28px; }
+        .reco { margin-top: 64px; }
         .reco-head {
             display: flex; align-items: center; gap: 8px;
             font-size: 17px; font-weight: 700; color: var(--text-strong); margin-bottom: 16px;
@@ -309,6 +311,9 @@
             .hero-shell { padding: 36px 28px; }
             .hero-grid { grid-template-columns: 1fr; gap: 40px; }
             .wordmark { font-size: 64px; }
+            /* 1단 스택에선 좌/우가 세로로 쌓이므로 검색바·추천 추가 여백 불필요 */
+            .search-col { padding-top: 0; }
+            .reco { margin-top: 28px; }
         }
         @media (max-width: 560px) {
             .page { padding: 24px 16px 56px; }
