@@ -3,7 +3,7 @@ YouTube video search and statistics service
 """
 from typing import List, Dict, Any
 import httpx
-from scripts.config import YOUTUBE_API_KEY
+from scripts.youtube.api_keys import get_with_rotation, has_keys
 
 
 def fetch_product_videos(product_name: str, max_results: int = 5) -> List[Dict[str, Any]]:
@@ -11,12 +11,12 @@ def fetch_product_videos(product_name: str, max_results: int = 5) -> List[Dict[s
     Search YouTube for videos about a product and fetch their statistics.
     Returns list of dicts: {video_id, title, description, published_at, thumbnail_url, view_count, like_count, comment_count}
     """
-    if not YOUTUBE_API_KEY:
+    if not has_keys():
         return []
-    
+
     try:
         client = httpx.Client()
-        
+
         # Step 1: Search for videos
         search_url = "https://www.googleapis.com/youtube/v3/search"
         search_params = {
@@ -24,25 +24,21 @@ def fetch_product_videos(product_name: str, max_results: int = 5) -> List[Dict[s
             "q": product_name,
             "type": "video",
             "maxResults": max_results,
-            "key": YOUTUBE_API_KEY,
         }
-        search_resp = client.get(search_url, params=search_params, timeout=30.0)
-        search_resp.raise_for_status()
+        search_resp = get_with_rotation(client, search_url, search_params)
         search_data = search_resp.json()
-        
+
         video_ids = [item["id"]["videoId"] for item in search_data.get("items", [])]
         if not video_ids:
             return []
-        
+
         # Step 2: Get video statistics
         videos_url = "https://www.googleapis.com/youtube/v3/videos"
         videos_params = {
             "part": "snippet,statistics",
             "id": ",".join(video_ids),
-            "key": YOUTUBE_API_KEY,
         }
-        videos_resp = client.get(videos_url, params=videos_params, timeout=30.0)
-        videos_resp.raise_for_status()
+        videos_resp = get_with_rotation(client, videos_url, videos_params)
         videos_data = videos_resp.json()
         
         results = []

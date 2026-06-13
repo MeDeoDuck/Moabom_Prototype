@@ -5,7 +5,7 @@ from typing import Iterable
 
 import httpx
 
-from scripts.config import YOUTUBE_API_KEY
+from scripts.youtube.api_keys import get_with_rotation, has_keys
 
 
 _CHANNELS_URL = "https://www.googleapis.com/youtube/v3/channels"
@@ -18,7 +18,7 @@ def _chunked(seq: list[str], size: int) -> Iterable[list[str]]:
 
 def fetch_channel_metadata(channel_ids: list[str]) -> dict[str, dict]:
     """channels.list → {channel_id: {name, subscriber_count}}."""
-    if not YOUTUBE_API_KEY or not channel_ids:
+    if not has_keys() or not channel_ids:
         return {}
 
     unique_ids = list({cid for cid in channel_ids if cid})
@@ -29,11 +29,9 @@ def fetch_channel_metadata(channel_ids: list[str]) -> dict[str, dict]:
             params = {
                 "part": "snippet,statistics",
                 "id": ",".join(chunk),
-                "key": YOUTUBE_API_KEY,
             }
             try:
-                resp = client.get(_CHANNELS_URL, params=params, timeout=30.0)
-                resp.raise_for_status()
+                resp = get_with_rotation(client, _CHANNELS_URL, params)
             except httpx.HTTPError as e:
                 print(f"[channel_service] channels.list failed: {e}")
                 continue

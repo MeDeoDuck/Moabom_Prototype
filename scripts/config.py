@@ -10,7 +10,17 @@ load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/techdb")
 
 # API Keys
-YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY", "")
+# YouTube Data API v3 — 키 풀(quota failover). `YOUTUBE_API_KEYS`(`;` 구분)가 있으면
+# 우선, 없으면 단일 `YOUTUBE_API_KEY` 로 폴백. rotation 은 scripts/youtube/api_keys.py
+# 가 담당하며 .env 에 키만 채우면 모든 호출부가 자동 적용된다.
+YOUTUBE_API_KEYS = [
+    k.strip() for k in os.getenv("YOUTUBE_API_KEYS", "").split(";") if k.strip()
+]
+if not YOUTUBE_API_KEYS:
+    _single = os.getenv("YOUTUBE_API_KEY", "").strip()
+    YOUTUBE_API_KEYS = [_single] if _single else []
+# 하위호환: 단일 키를 import 하는 기존 코드(가드 등)는 첫 키를 본다.
+YOUTUBE_API_KEY = YOUTUBE_API_KEYS[0] if YOUTUBE_API_KEYS else ""
 HF_TOKEN = os.getenv("HF_TOKEN", "")
 # Serper (serper.dev) — Google Images 검색. 키 값은 .env 에만 존재하며
 # (gitignore), 여기서는 환경변수로 읽기만 한다 — 코드/커밋 하드코딩 금지.

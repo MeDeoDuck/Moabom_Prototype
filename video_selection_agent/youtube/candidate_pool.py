@@ -16,7 +16,7 @@ from typing import Iterable
 
 import httpx
 
-from scripts.config import YOUTUBE_API_KEY
+from scripts.youtube.api_keys import get_with_rotation, has_keys
 from video_selection_agent.core.models import ProductContext, VideoCandidate
 
 
@@ -65,10 +65,8 @@ def _search_once(client: httpx.Client, query: str, limit: int) -> list[str]:
         "q": query,
         "type": "video",
         "maxResults": limit,
-        "key": YOUTUBE_API_KEY,
     }
-    resp = client.get(_SEARCH_URL, params=params, timeout=30.0)
-    resp.raise_for_status()
+    resp = get_with_rotation(client, _SEARCH_URL, params)
     data = resp.json()
     ids: list[str] = []
     for item in data.get("items", []):
@@ -87,10 +85,8 @@ def _fetch_video_details(
         params = {
             "part": "snippet,statistics,contentDetails",
             "id": ",".join(chunk),
-            "key": YOUTUBE_API_KEY,
         }
-        resp = client.get(_VIDEOS_URL, params=params, timeout=30.0)
-        resp.raise_for_status()
+        resp = get_with_rotation(client, _VIDEOS_URL, params)
         for item in resp.json().get("items", []):
             details[item["id"]] = item
     return details
@@ -139,7 +135,7 @@ def build_candidate_pool(
     target_size: int = 30,
 ) -> list[VideoCandidate]:
     """각 쿼리로 search → videos.list 로 metadata 보강 → dedupe → target_size까지."""
-    if not YOUTUBE_API_KEY:
+    if not has_keys():
         return []
 
     queries = _build_queries(product)

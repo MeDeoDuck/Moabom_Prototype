@@ -17,16 +17,28 @@ import atexit
 import base64
 import os
 import tempfile
+import threading
 from http.cookiejar import MozillaCookieJar
 from typing import Any
 
 import requests
 
 _TMP_COOKIE_PATH: str | None = None
+_cookie_lock = threading.Lock()
+_cookie_idx = 0
 
 
 def get_cookie_path() -> str | None:
-    global _TMP_COOKIE_PATH
+    global _TMP_COOKIE_PATH, _cookie_idx
+    # YT_COOKIES_LIST(`;` 경로들) — 호출마다 round-robin 으로 한 쿠키 선택(계정 부하 분산).
+    # 단일 YT_COOKIES_PATH / YT_COOKIES_B64 와 호환(리스트 미설정 시 기존 동작 그대로).
+    raw = os.environ.get("YT_COOKIES_LIST", "")
+    pool = [p.strip() for p in raw.split(";") if p.strip() and os.path.exists(p.strip())]
+    if pool:
+        with _cookie_lock:
+            i = _cookie_idx % len(pool)
+            _cookie_idx = (i + 1) % len(pool)
+        return pool[i]
     p = os.environ.get("YT_COOKIES_PATH")
     if p and os.path.exists(p):
         return p
