@@ -1,0 +1,101 @@
+name: Deploy to Azure Container Apps
+
+# 1차 도입: 수동 트리거(workflow_dispatch)로 빌드·배포·헬스체크 전 구간을 검증한 뒤,
+# 검증이 통과하면 아래 push 블록 주석을 해제해 main push 자동 배포로 전환한다.
+on:
+  workflow_dispatch:
+  # push:
+  #   branches: [main]
+
+# 같은 ref의 배포를 직렬화한다. 진행 중 배포는 중간에 죽이면 ca-moabom이
+# half-updated 상태가 될 수 있어 취소하지 않는다(cancel-in-progress: false).
+concurrency:
+  group: deploy-aca-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  AZURE_RESOURCE_GROUP: rg-moabom
+  ACR_NAME: acrmoabom
+  CONTAINERAPP_NAME: ca-moabom
+  IMAGE_REPO: moabom-app
+  HEALTH_URL: https://ca-moabom.ambitioushill-953af2e9.koreacentral.azurecontainerapps.io/products
+
+jobs:
+  # ─────────────────────────────────────────────────────────
+  # 1) 회귀 게이트 — 보고서 양식 45 tests, DB/LLM/네트워크 불필요(오프라인)
+  # ─────────────────────────────────────────────────────────
+  regression:
+    name: Regression gate (offline)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"   # Dockerfile python:3.11-slim 과 일치
+          cache: pip
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Run regression suite
+        run: python -m pytest regression -q
+
+  # ─────────────────────────────────────────────────────────
+  # 2) 빌드 + 배포 — 회귀 통과 후에만
+  # ─────────────────────────────────────────────────────────
+  build-and-deploy:
+    name: Build & deploy to Container Apps
+    needs: regression
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write    # 추후 OIDC 전환 대비(SP creds 방식에선 무해)
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+
+      # 짧은 커밋 SHA 태그 — 동일 태그 재push 캐시 문제 회피(배포는 항상 SHA로)
+      - name: Compute short SHA tag
+        id: tag
+        run: echo "sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: Azure login
+        uses: azure/login@v3
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      # ACR Tasks 클라우드 빌드(현재 수동 절차와 동일 명령). latest 도 같이 태깅.
+      - name: Build image in ACR
+        run: |
+          az acr build \
+            --registry "$ACR_NAME" \
+            --image "${IMAGE_REPO}:${{ steps.tag.outputs.sha }}" \
+            --image "${IMAGE_REPO}:latest" \
+            --file Dockerfile .
+
+      # image 변경은 새 revision 을 자동 생성한다.
+      - name: Deploy to Container App
+        run: |
+          az containerapp update \
+            --name "$CONTAINERAPP_NAME" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --image "${ACR_NAME}.azurecr.io/${IMAGE_REPO}:${{ steps.tag.outputs.sha }}"
+
+      # 새 revision 이 트래픽을 받을 때까지 헬스체크(최대 ~5분). 실패 시 워크플로우 fail.
+      - name: Smoke test /products
+        run: |
+          echo "Waiting for new revision to serve traffic..."
+          for i in $(seq 1 20); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$HEALTH_URL" || echo "000")
+            echo "attempt $i: HTTP $code"
+            if [ "$code" = "200" ]; then
+              echo "Health check passed."
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "Health check FAILED after ~5min — /products did not return 200."
+          exit 1
