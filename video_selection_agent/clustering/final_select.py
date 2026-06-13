@@ -118,6 +118,7 @@ def llm_final_select(candidates: list[dict], transcripts: dict[str, str]) -> tup
 class VerifyPolicy:
     """설계 §4 [9] 정책 파라미터."""
     k: int = 5
+    k_min: int = 3            # 이 이상이면 부분 수용(activation._K_MIN 과 동일). P0 graceful fill
     max_per_channel: int = 2
     coverage_alpha: float = 0.15      # 새 클러스터 가점
     non_mega_min: int = 1
@@ -137,6 +138,29 @@ def _candidate_score(c: dict) -> float:
     return c.get("fit", 0.0) + 0.3 * c.get("depth", 0.0) - 0.3 * c.get("risk", 0.0)
 
 
+def _relax_cost(
+    c: dict,
+    per_channel: dict[str, int],
+    mega_count: int,
+    small_below_count: int,
+    policy: VerifyPolicy,
+) -> float:
+    """캡을 어기며 채울 때의 비용(작을수록 먼저 채택).
+
+    완화 우선순위(설계 §4 [9] 의도): mega 캡(가장 쌈) < small/micro 캡 < 채널 캡
+    (소스 다양성=합의 신뢰도라 가장 비쌈). scope 는 pool 단계 하드 제외라 여기 오지 않는다.
+    """
+    cost = 0.0
+    if per_channel.get(c.get("channel_id", ""), 0) >= policy.max_per_channel:
+        cost += 1.0
+    tier = c.get("tier", "")
+    if tier == "mega" and mega_count >= policy.mega_cap():
+        cost += 0.25
+    if tier in ("small", "micro") and small_below_count >= policy.small_below_cap():
+        cost += 0.5
+    return cost
+
+
 def verify_and_select(
     candidates: list[dict],
     policy: VerifyPolicy | None = None,
@@ -146,10 +170,12 @@ def verify_and_select(
     candidates: [{video_id, cluster_id, tier, channel_id, scope_label,
                   fit, depth, risk, reason}, ...]
     반환: {selected:[video_id...], detail:[{video_id, score, cluster_id, tier}],
-           fallback:bool, violations:[...], stats:{...}}
+           fallback:bool, relaxed:bool, filled:int, violations:[...], stats:{...}}
+    fallback 은 len<k_min 일 때만 True(v1 복귀). k_min..k 는 부족분을 완화 채움해 수용.
     """
     policy = policy or VerifyPolicy()
     k = policy.k
+    k_min = min(policy.k_min, k)   # k_min 은 k 를 넘지 못함(작은 k 안전)
 
     # 1) scope 영상(비교/랭킹) 하드 제외
     pool = [c for c in candidates if int(c.get("scope_label", 0) or 0) != 1]
@@ -210,11 +236,43 @@ def verify_and_select(
         else:
             violations.append("non_mega_min unmet (no non-mega candidate)")
 
-    # 5) k 미달 → 부족 표시 (shadow 는 fallback 으로 v1 가 이미 반환 중)
-    fallback = False
-    if len(selected) < k:
+    # 5) graceful fill (P0): k_min 이상 확보 시 부족분(k-len)을 '캡 위반이 가장 적은'
+    #    잔여 후보로 채운다. fill_pool 은 ranked 에서 새로 만들어 step 4 swap 중복을 피한다.
+    #    scope=1 은 pool 단계에서 하드 제외돼 채움 대상이 아니다.
+    filled = 0
+    if len(selected) >= k_min:
+        sel_ids = {c["video_id"] for c in selected}
+        fill_pool = [c for c in ranked if c["video_id"] not in sel_ids]
+        while len(selected) < k and fill_pool:
+            best = min(
+                fill_pool,
+                key=lambda c: (
+                    _relax_cost(c, per_channel, mega_count, small_below_count, policy),
+                    -_candidate_score(c),
+                    str(c.get("video_id", "")),
+                ),
+            )
+            fill_pool.remove(best)
+            selected.append(best)
+            sel_ids.add(best["video_id"])
+            ch = best.get("channel_id", "")
+            per_channel[ch] = per_channel.get(ch, 0) + 1
+            covered_clusters.add(best.get("cluster_id"))
+            if best.get("tier") == "mega":
+                mega_count += 1
+            if best.get("tier") in ("small", "micro"):
+                small_below_count += 1
+            filled += 1
+
+    # 6) fallback 은 k_min 미만(진짜 후보 부족)일 때만 → v1 복귀. k_min..k 는 v3 수용.
+    relaxed = filled > 0
+    fallback = len(selected) < k_min
+    if relaxed:
+        violations.append(f"relaxed_fill:+{filled}")
+    if len(selected) < k and not relaxed:
         violations.append(f"only {len(selected)}/{k} satisfy policy")
-        fallback = True
+    if fallback:
+        violations.append(f"below k_min={k_min}")
 
     return {
         "selected": [c["video_id"] for c in selected],
@@ -229,6 +287,8 @@ def verify_and_select(
             for c in selected
         ],
         "fallback": fallback,
+        "relaxed": relaxed,
+        "filled": filled,
         "violations": violations,
         "stats": {
             "scope_excluded": scope_excluded,
