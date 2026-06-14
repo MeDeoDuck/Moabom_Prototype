@@ -12,6 +12,7 @@ from scripts.analysis.confidence_weights import (
     get_analysis_weight,
     LOW_CONFIDENCE_WARNING_THRESHOLD,
 )
+import os
 import uuid
 import random
 import re
@@ -369,10 +370,23 @@ def process_comments_with_agent(video_id, product_name):
     ))
 
     from comment_filtering_agent.analyzers.models import AnalyzerConfig
-    classifier = OptimizedBatchClassifier(
+    # 댓글 분류 backend 선택: worker(klue-roberta-large 3-class, 데스크탑 GPU) | api(GPT-4.1).
+    # 기본 worker — 워커 미설정/실패 시 어댑터 내부에서 api 로 폴백하므로 항상 안전.
+    # 즉시 롤백: CLASSIFIER_BACKEND=api.
+    _api_classifier = OptimizedBatchClassifier(
         batch_size=CLASSIFICATION_BATCH_SIZE,
         confidence_threshold=0.75,
     )
+    _classifier_backend = os.getenv("CLASSIFIER_BACKEND", "worker").strip().lower()
+    if _classifier_backend == "worker":
+        from comment_filtering_agent.classifiers.local_worker_classifier import (
+            LocalWorkerClassifier,
+        )
+        classifier = LocalWorkerClassifier(api_fallback=_api_classifier)
+        print("[AGENT] Classifier backend: worker (klue-roberta-large 3-class, api fallback)")
+    else:
+        classifier = _api_classifier
+        print("[AGENT] Classifier backend: api (RunYourAI GPT-4.1)")
 
     agent = AgentDecisionEngine()
 
