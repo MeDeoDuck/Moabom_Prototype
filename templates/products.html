@@ -118,8 +118,8 @@
 
         /* ── 우: 검색 + 추천 ── */
         /* 좌측 브랜딩(큰 워드마크) 대비 우측 콘텐츠가 너무 위에 붙어 보이는 문제 →
-           검색바를 살짝 내리고(여기) 추천 리포트는 더 내린다(.reco margin-top). */
-        .search-col { min-width: 0; padding-top: 32px; }
+           검색바를 좌측 워드마크(MOABOM) 라인에 맞추고(여기) 추천 리포트는 더 내린다(.reco margin-top). */
+        .search-col { min-width: 0; padding-top: 105px; }
         .search-wrap { position: relative; }
 
         .searchbar {
@@ -193,7 +193,9 @@
 
         /* ── 추천 리포트 캐러셀 ── */
         /* 추천 리포트 카드 밑라인을 좌측 pillars(3개 박스) 밑라인과 맞춤 (실측 +86px) */
-        .reco { margin-top: 150px; }
+        /* 추천 리포트(네모 카드 박스)의 아래라인을 좌측 pillars 3카드 아래라인과
+           맞춘다(1280px 기준 실측 정렬). 검색바 padding-top 변경 시 함께 재조정. */
+        .reco { margin-top: 88px; }
         .reco-head {
             display: flex; align-items: center; gap: 8px;
             font-size: 17px; font-weight: 700; color: var(--text-strong); margin-bottom: 16px;
@@ -253,16 +255,18 @@
         .reco-metrics .metric svg { color: var(--muted-2); }
         .reco-metrics .metric-date { color: var(--muted); }
 
-        .reco-next {
-            position: absolute; top: 50%; right: -14px; transform: translateY(-50%);
+        .reco-prev, .reco-next {
+            position: absolute; top: 50%; transform: translateY(-50%);
             width: 40px; height: 40px; border-radius: 50%;
             background: var(--surface); border: 1px solid var(--border);
             box-shadow: var(--shadow); color: var(--text);
             cursor: pointer; display: grid; place-items: center; z-index: 5;
             transition: box-shadow 0.15s, transform 0.1s;
         }
-        .reco-next:hover { box-shadow: var(--shadow-lg); }
-        .reco-next[hidden] { display: none; }
+        .reco-prev { left: -14px; }
+        .reco-next { right: -14px; }
+        .reco-prev:hover, .reco-next:hover { box-shadow: var(--shadow-lg); }
+        .reco-prev[hidden], .reco-next[hidden] { display: none; }
 
         .reco-dots { display: flex; justify-content: center; gap: 8px; margin-top: 18px; }
         .reco-dots[hidden] { display: none; }
@@ -528,6 +532,9 @@
                                     {% endfor %}
                                 </div>
                             </div>
+                            <button type="button" class="reco-prev" id="recoPrev" aria-label="이전 리포트" hidden>
+                                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 6 9 12 15 18"/></svg>
+                            </button>
                             <button type="button" class="reco-next" id="recoNext" aria-label="다음 리포트" hidden>
                                 <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>
                             </button>
@@ -715,7 +722,7 @@
                 renderSuggestState('두 글자 이상 입력하면 후보가 표시됩니다.');
                 return;
             }
-            renderSuggestState('검색 중…');
+            renderSuggestState('잠시만 기다리면 검색어 후보를 보여드릴게요.');
             suggestDebounce = setTimeout(() => fetchSuggest(q), 350);
         });
 
@@ -1011,6 +1018,7 @@
             const viewport = document.getElementById('recoViewport');
             const track = document.getElementById('recoTrack');
             const nextBtn = document.getElementById('recoNext');
+            const prevBtn = document.getElementById('recoPrev');
             const dotsEl = document.getElementById('recoDots');
             if (!viewport || !track) return;
 
@@ -1040,6 +1048,7 @@
                 const count = stepCount();
                 const multi = count > 1;
                 nextBtn.hidden = !multi;
+                prevBtn.hidden = !multi;
                 dotsEl.hidden = !multi;
                 dotsEl.innerHTML = '';
                 if (!multi) return;
@@ -1067,6 +1076,13 @@
                 const maxScroll = viewport.scrollWidth - viewport.clientWidth;
                 let target = viewport.scrollLeft + step();
                 if (target > maxScroll - 2) target = 0; // 끝에서 처음으로 순환
+                viewport.scrollTo({ left: target, behavior: 'smooth' });
+            });
+
+            prevBtn.addEventListener('click', () => {
+                const maxScroll = viewport.scrollWidth - viewport.clientWidth;
+                let target = viewport.scrollLeft - step();
+                if (target < 2) target = maxScroll; // 처음에서 끝으로 순환
                 viewport.scrollTo({ left: target, behavior: 'smooth' });
             });
 
