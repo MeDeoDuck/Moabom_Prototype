@@ -7,18 +7,19 @@ from __future__ import annotations
 
 from fastapi import FastAPI
 
-from services.fetch_worker.routes import embed, health, scope, transcript
+from services.fetch_worker.routes import classify, embed, health, scope, transcript
 
 app = FastAPI(
     title="Moabom Fetch Worker",
     description=(
         "Residential-IP YouTube fetch (transcript) + GPU scope classifier "
-        "+ Qwen3 embedding for Azure offload."
+        "+ Qwen3 embedding + comment 3-class classifier for Azure offload."
     ),
-    version="0.3.0",
+    version="0.4.0",
 )
 
 app.include_router(health.router)
 app.include_router(transcript.router)
 app.include_router(scope.router)
 app.include_router(embed.router)
+app.include_router(classify.router)

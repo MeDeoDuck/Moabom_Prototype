@@ -36,6 +36,7 @@ from comment_filtering_agent.classifiers.models import (
     CommentLabel,
     ClassificationConfig
 )
+from comment_filtering_agent.classifiers.aspect_keywords import extract_mentioned_features
 
 
 # ============================================================================
@@ -100,34 +101,32 @@ class ClassificationCache:
 # 압축된 프롬프트 템플릿
 # ============================================================================
 
-COMPACT_SYSTEM_PROMPT = """YouTube 제품 리뷰 댓글 분류기.
+COMPACT_SYSTEM_PROMPT = """YouTube 제품 리뷰 댓글 3-class 분류기.
 
-라벨:
-- PRODUCT_OPINION: 제품 성능/품질 평가 (발열, 배터리, 성능, 디자인 등)
-- VIDEO_REACTION: 영상/리뷰어 칭찬
-- QUESTION: 제품 관련 질문
-- CHATTER: 의미없는 반응 (ㅋㅋ, 와, 오)
-- OFF_TOPIC: 완전히 무관
+라벨 (3종만 사용):
+- PRODUCT_OPINION: 제품 자체 평가 (발열/배터리/성능/디자인/가격/카메라/화면/품질 등 제품 속성에 대한 의견)
+- VIDEO_REACTION: 그 외 전부 (영상·리뷰어 칭찬, 단순 반응 ㅋㅋ/와/오, 잡담, 광고, 제품 무관 내용)
+- QUESTION: 제품 관련 질문 (성능/구매/기능/호환/사용법)
 
-규칙:
-1. 제품 특성 언급 → PRODUCT_OPINION
-2. 영상/리뷰어 언급 → VIDEO_REACTION
-3. 질문형 → QUESTION
-4. 짧고 의미없음 → CHATTER
-5. 무관 → OFF_TOPIC
+우선순위 (위에서부터 검사):
+1. 제품 속성 + 평가·의견이면 → PRODUCT_OPINION
+2. 제품 관련 의문문이면 → QUESTION
+3. 그 외 모두 → VIDEO_REACTION
 
-JSON 배열로 응답: [{"id": "c1", "label": "PRODUCT_OPINION", "confidence": 0.95, "needs_recheck": false}, ...]"""
+각 댓글에 mentioned_product_features(댓글에 등장한 제품 속성 단어 배열, 없으면 [])를 반드시 포함.
+JSON 배열로 응답: [{"id": "c1", "label": "PRODUCT_OPINION", "confidence": 0.95, "needs_recheck": false, "mentioned_product_features": ["발열"]}, ...]"""
 
 
 COMPACT_FEW_SHOT = [
     {"text": "발열은 심한데 성능은 좋네요", "label": "PRODUCT_OPINION", "conf": 0.95},
     {"text": "배터리 빨리 닳아요", "label": "PRODUCT_OPINION", "conf": 0.98},
-    {"text": "오늘 영상 재밌네요", "label": "VIDEO_REACTION", "conf": 0.97},
-    {"text": "이거 게임 잘 돌아가나요?", "label": "QUESTION", "conf": 0.99},
-    {"text": "ㅋㅋㅋㅋ", "label": "CHATTER", "conf": 0.95},
-    {"text": "배경음악 제목 뭔가요?", "label": "OFF_TOPIC", "conf": 0.99},
     {"text": "가격 대비 괜찮아요", "label": "PRODUCT_OPINION", "conf": 0.94},
+    {"text": "이거 게임 잘 돌아가나요?", "label": "QUESTION", "conf": 0.99},
+    {"text": "어디서 사면 싸요?", "label": "QUESTION", "conf": 0.96},
+    {"text": "오늘 영상 재밌네요", "label": "VIDEO_REACTION", "conf": 0.97},
     {"text": "리뷰 설명 상세해요", "label": "VIDEO_REACTION", "conf": 0.96},
+    {"text": "ㅋㅋㅋㅋ", "label": "VIDEO_REACTION", "conf": 0.95},
+    {"text": "배경음악 제목 뭔가요?", "label": "VIDEO_REACTION", "conf": 0.95},
 ]
 
 
@@ -159,8 +158,12 @@ def generate_batch_prompt(comments: List[Tuple[str, str]], include_examples: boo
     # 분류할 댓글
     prompt_parts.append(f"분류할 댓글 ({len(comments)}개):\n{comments_json}")
     
-    # 출력 형식
-    prompt_parts.append("\nJSON 배열만 출력 (다른 텍스트 금지):")
+    # 출력 형식 — mentioned_product_features 키 강제 (VR→ANALYZE 승격 입력)
+    prompt_parts.append(
+        "\n각 댓글에 mentioned_product_features(제품 속성 단어 배열, 없으면 [])를 포함.\n"
+        'JSON 배열만 출력 (다른 텍스트 금지): '
+        '[{"id":"c1","label":"PRODUCT_OPINION","confidence":0.95,"needs_recheck":false,"mentioned_product_features":[]}]'
+    )
     
     return "\n\n".join(prompt_parts)
 
@@ -282,15 +285,16 @@ class OptimizedBatchClassifier:
                 if isinstance(result_or_error, Exception):
                     print(f"Warning: Batch classification failed: {result_or_error}")
                     for cid, _ in batch:
-                        llm_results[cid] = {"label": "CHATTER", "confidence": 0.0, "needs_recheck": True}
+                        llm_results[cid] = {"label": "VIDEO_REACTION", "confidence": 0.0, "needs_recheck": True, "mentioned_product_features": []}
                 else:
                     for item in (result_or_error if isinstance(result_or_error, list) else []):
                         cid = item.get("id")
                         if cid:
                             llm_results[cid] = {
-                                "label": item.get("label", "CHATTER"),
+                                "label": item.get("label", "VIDEO_REACTION"),
                                 "confidence": float(item.get("confidence", 0.5)),
-                                "needs_recheck": item.get("needs_recheck", False)
+                                "needs_recheck": item.get("needs_recheck", False),
+                                "mentioned_product_features": item.get("mentioned_product_features", []),
                             }
 
             # 3. 결과를 캐시에 저장
@@ -327,20 +331,29 @@ class OptimizedBatchClassifier:
         for i, text in enumerate(comments):
             comment_id = f"c{start_index + i}"
             result_dict = all_results.get(comment_id, {
-                "label": "CHATTER",
+                "label": "VIDEO_REACTION",
                 "confidence": 0.0,
                 "needs_recheck": True
             })
             
+            label_str = result_dict.get("label", "VIDEO_REACTION")
+            # LLM 이 mentioned_product_features 를 채우지만(프롬프트 강제), VR 승격
+            # 기준을 worker backend 와 동일하게 맞추기 위해 VR 라벨은 키워드 후처리로
+            # 보강한다(LLM ∪ keyword). PO/Q 는 features 무관(이미 ANALYZE/AUX).
+            mentioned = result_dict.get("mentioned_product_features", []) or []
+            if label_str == "VIDEO_REACTION" and text:
+                kw = extract_mentioned_features(text)
+                mentioned = list(dict.fromkeys([*mentioned, *kw]))
+
             result = ClassificationResult(
                 index=start_index + i,
                 original_comment=text,
-                label=CommentLabel(result_dict.get("label", "CHATTER")),
+                label=CommentLabel(label_str),
                 confidence=float(result_dict.get("confidence", 0.5)),
                 rationale_short=result_dict.get("rationale", ""),
                 needs_recheck=result_dict.get("needs_recheck", False),
-                mentioned_product_features=[],
-                is_product_related=result_dict.get("label") in ["PRODUCT_OPINION", "QUESTION"],
+                mentioned_product_features=mentioned,
+                is_product_related=label_str in ["PRODUCT_OPINION", "QUESTION"],
                 classifier_type="optimized_batch",
                 model_name=self.model,
                 prompt_version=self.prompt_version,
@@ -381,16 +394,17 @@ class OptimizedBatchClassifier:
                 cid = item.get("id")
                 if cid:
                     results[cid] = {
-                        "label": item.get("label", "CHATTER"),
+                        "label": item.get("label", "VIDEO_REACTION"),
                         "confidence": float(item.get("confidence", 0.5)),
-                        "needs_recheck": item.get("needs_recheck", False)
+                        "needs_recheck": item.get("needs_recheck", False),
+                        "mentioned_product_features": item.get("mentioned_product_features", []),
                     }
             return results
 
         except Exception as e:
             print(f"Warning: Batch classification failed: {e}")
             return {
-                cid: {"label": "CHATTER", "confidence": 0.0, "needs_recheck": True}
+                cid: {"label": "VIDEO_REACTION", "confidence": 0.0, "needs_recheck": True, "mentioned_product_features": []}
                 for cid, _ in comments
             }
     

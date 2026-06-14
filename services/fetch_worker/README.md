@@ -2,7 +2,7 @@
 
 Datacenter IP에서 YouTube 자막 fetch가 봇으로 차단되는 문제 + Azure CPU 머신에서 GPU 추론이 불가한 문제를 자취방 데스크탑(RTX 4060 Ti, residential IP)으로 위임하기 위한 얇은 FastAPI 워커.
 
-- 분리 대상: `/transcript` (yt-dlp + caption URL fetch) + `/scope-classify` (klue/roberta-large 비교영상 분류). 댓글·메타데이터는 YouTube Data API v3 key 기반이라 IP 차단을 받지 않으므로 Azure가 그대로 호출.
+- 분리 대상: `/transcript` (yt-dlp + caption URL fetch) + `/scope-classify` (klue/roberta-large 비교영상 분류) + `/embed` (Qwen3 임베딩) + `/classify` (klue/roberta-large 댓글 3-class 분류). 자막은 residential IP 우회, 나머지는 GPU 추론 위임이 목적. 댓글·메타데이터 수집은 YouTube Data API v3 key 기반이라 IP 차단을 받지 않으므로 Azure가 그대로 호출.
 - 외부 노출: Tailscale Funnel (`*.ts.net` HTTPS).
 - 가역성: Azure 측 `YOUTUBE_FETCH_WORKER_URL` / `SCOPE_WORKER_URL` env를 비우면 즉시 Azure-only 경로로 복귀.
 
@@ -13,11 +13,15 @@ services/fetch_worker/
 ├── app.py              # FastAPI app
 ├── auth.py             # Bearer 토큰
 ├── transcript_logic.py # cookieless transcript fetch (residential IP 전제)
-├── scope_logic.py      # klue/roberta-large GPU inference (lazy load singleton)
+├── scope_logic.py      # klue/roberta-large 비교영상 GPU inference (lazy singleton)
+├── classify_logic.py   # klue/roberta-large 댓글 3-class GPU inference (lazy singleton)
+├── embed_logic.py      # Qwen3 임베딩 GPU inference
 ├── routes/
 │   ├── health.py       # /healthz (auth 없음)
 │   ├── transcript.py   # POST /transcript (Bearer 필수)
-│   └── scope.py        # POST /scope-classify (Bearer 필수)
+│   ├── scope.py        # POST /scope-classify (Bearer 필수)
+│   ├── embed.py        # POST /embed (Bearer 필수)
+│   └── classify.py     # POST /classify (Bearer 필수)
 ├── requirements.txt    # 운영 본체와 격리된 의존성
 └── deploy/
     ├── moabom-fetch.service     # systemd unit 템플릿
@@ -83,6 +87,28 @@ curl -s -X POST http://127.0.0.1:8080/scope-classify \
 # → {"results":[{"video_id":"a","label":1,...},{"video_id":"b","label":0,...}], ...}
 ```
 
+## classify 추가 셋업 (댓글 3-class GPU 추론)
+
+`/classify` 는 재현(testLocalvsAPI)의 klue/roberta-large **3-class** 체크포인트를 로드한다. scope 와 달리 전처리 없이 댓글 원문을 그대로 토크나이즈하므로 추가 패키지 설치는 불필요 (torch/transformers 는 scope 셋업에서 이미 설치됨).
+
+```bash
+# 모델 경로 확인 (재현 repo 의 artifacts — git pull 로 testLocalvsAPI 최신화 전제)
+ls /home/rtx4060ti/projects/testLocalvsAPI/local_classifier/artifacts/3_labels/klue__roberta-large/model/best/
+
+# env 에 모델 경로 추가
+echo "CLASSIFY_MODEL_DIR=/home/rtx4060ti/projects/testLocalvsAPI/local_classifier/artifacts/3_labels/klue__roberta-large/model/best" | sudo tee -a /etc/moabom-fetch.env
+
+sudo systemctl restart moabom-fetch.service
+journalctl -u moabom-fetch.service -n 30   # "[CLASSIFY] Loaded ... on cuda" 확인
+
+# 로컬 검증 (첫 호출 모델 load 1~3초 → 이후 ms 단위)
+TOKEN=$(sudo cat /etc/moabom-fetch.env | grep FETCH_WORKER_TOKEN | cut -d= -f2)
+curl -s -X POST http://127.0.0.1:8080/classify \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"comments":["발열 심한데 성능 좋네요","ㅋㅋㅋ","게임 되나요?"]}'
+# → PRODUCT_OPINION / VIDEO_REACTION / QUESTION
+```
+
 ## Azure 측 연결 (1회)
 
 ```bash
@@ -99,7 +125,10 @@ az containerapp update -g rg-moabom -n ca-moabom \
     YOUTUBE_FETCH_WORKER_URL=secretref:fetch-worker-url \
     YOUTUBE_FETCH_WORKER_TOKEN=secretref:fetch-worker-token \
     SCOPE_WORKER_URL=secretref:fetch-worker-url \
-    SCOPE_WORKER_TOKEN=secretref:fetch-worker-token
+    SCOPE_WORKER_TOKEN=secretref:fetch-worker-token \
+    CLASSIFY_WORKER_URL=secretref:fetch-worker-url \
+    CLASSIFY_WORKER_TOKEN=secretref:fetch-worker-token \
+    CLASSIFIER_BACKEND=worker
 
 # 새 revision으로 자동 restart
 az containerapp revision list -g rg-moabom -n ca-moabom -o table
