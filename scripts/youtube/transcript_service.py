@@ -39,6 +39,12 @@ def _fetch_via_worker(video_id: str, base_url: str, token: str) -> Optional[Dict
             if resp.status_code == 404:
                 print(f"[TRANSCRIPT] worker: no transcript for {video_id}")
                 return None
+            if resp.status_code == 429:
+                # rate-limit/봇차단 → 5xx 처럼 backoff 재시도, 소진 시 로컬 폴백.
+                # (404='자막 없음'과 달리 재시도 가치 있음 — 워커가 429/404 를 구분해 준다.)
+                print(f"[TRANSCRIPT] worker 429 rate-limited, retry {attempt + 1}/3")
+                time.sleep(2 ** attempt)
+                continue
             if 500 <= resp.status_code < 600:
                 print(f"[TRANSCRIPT] worker 5xx ({resp.status_code}), retry {attempt + 1}/3")
                 time.sleep(2 ** attempt)
