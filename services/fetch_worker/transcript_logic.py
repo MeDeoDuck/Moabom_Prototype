@@ -200,25 +200,38 @@ def _fetch_transcript_once(
     return None, saw_rate_limit
 
 
-def fetch_transcript(video_id: str) -> dict[str, Any] | None:
+def fetch_transcript_status(video_id: str) -> tuple[dict[str, Any] | None, bool]:
     """쿠키 풀 round-robin + rate-limit 시 다음 쿠키 재시도 (P1 쿠키 풀).
 
-    YT_COOKIES_LIST 미설정 시 단일 쿠키 1회 시도와 동일(리스트 길이 1).
+    rate-limit(=재시도 가치 있음)과 '진짜 자막 없음'을 구분해 (result, rate_limited)
+    로 반환한다 — 라우트가 200/429/404 로 매핑한다. YT_COOKIES_LIST 미설정 시 단일
+    쿠키 1회 시도와 동일(리스트 길이 1).
     """
     paths = _cookie_paths()
     if not paths:
-        result, _ = _fetch_transcript_once(video_id, None)   # 익명 폴백
-        return result
+        result, rate_limited = _fetch_transcript_once(video_id, None)   # 익명 폴백
+        return result, (rate_limited if result is None else False)
 
     n = len(paths)
     start = _next_start(n)
+    any_rate_limited = False
     for off in range(n):
         cookie_path = paths[(start + off) % n]
         result, rate_limited = _fetch_transcript_once(video_id, cookie_path)
         if result:
-            return result
+            return result, False
         if not rate_limited:
-            return None          # 진짜 자막 없음/영구 실패 → 회전 무의미
+            return None, False   # 진짜 자막 없음/영구 실패 → 회전 무의미
+        any_rate_limited = True
         if off + 1 < n:
             print(f"[transcript] rate-limited, rotating cookie ({off + 2}/{n})", flush=True)
-    return None
+    return None, any_rate_limited   # 전 쿠키 rate-limited → 신호 유지
+
+
+def fetch_transcript(video_id: str) -> dict[str, Any] | None:
+    """(하위호환) dict|None 만 반환하는 얇은 래퍼.
+
+    rate-limit 여부까지 필요하면 fetch_transcript_status 를 쓴다.
+    """
+    result, _ = fetch_transcript_status(video_id)
+    return result
