@@ -1,240 +1,202 @@
-# 모아봄 (Moabom)
+# Moabom — 실사용자에게 배포한 멀티에이전트 리뷰 분석 서비스, 로컬 모델 증류로 댓글 분류 비용 99% 절감
 
-> **유튜브 테크 리뷰 종합 분석 에이전트** — 한 제품에 대한 여러 리뷰 영상의 자막과 댓글을 자동으로 수집·분석해, 리뷰어 합의 의견과 소비자 여론을 함께 보여주는 **제품 단위 7섹션 종합 보고서**를 생성하는 B2C 웹 서비스 MVP.
-
-인하대학교 인공지능공학과 캡스톤디자인 프로젝트 (2026, 3인 팀).
+![Status](https://img.shields.io/badge/status-MVP%20Deployed-brightgreen)
+![Type](https://img.shields.io/badge/type-Multi--Agent%20LLM%20%2B%20Full%20Stack-blue)
 
 ---
 
-## 왜 만들었나
+## 🎯 프로젝트 소개
 
-테크 제품을 살 때 유튜브 리뷰 N개를 일일이 보는 시간을 줄이는 것이 출발점. **여러 리뷰어가 공통으로 지적하는 장단점**(합의 빈도 N/N)과 **실사용자 댓글 여론**을 한 화면에서 비교할 수 있도록, 두 흐름을 별도 파이프라인으로 모아 한 보고서로 합친다.
+**한 제품에 대한 여러 유튜브 테크 리뷰 영상의 자막과 댓글을 자동 수집·분석해, 리뷰어들의 합의 의견(합의 빈도 N/N)과 실사용자 여론을 함께 담은 제품 단위 7섹션 종합 보고서를 생성하는 B2C 웹 MVP.** 인하대학교 AI공학과 캡스톤 3인 프로젝트.
 
-## 핵심 기능
+리뷰 영상 하나하나를 직접 보고 댓글을 훑는 대신, 제품명 하나만 입력하면 여러 리뷰어의 판단이 얼마나 일치하는지와 실사용자 반응을 한 화면에서 확인한다.
 
-| | 설명 |
+- 🤖 **멀티에이전트 파이프라인**: 영상 선정 · 댓글 필터 · 보고서 생성 3개 에이전트(LangGraph)
+- 📊 **판정 일관성 98%**: 300회 실행 기준(GPT-4.1 90%, Gemini 86% 대비)
+- 💸 **로컬 KLUE-RoBERTa 증류로 댓글 분류 API 비용 99% 절감, 추론 속도 22배**(macro F1 0.917)
+- 🎬 **비교 영상 자동 제외**: 탐지 정확도 0.899(데스크탑 GPU 워커)
+- 🚀 **Azure Container Apps 실배포**: v1 MVP(2026.5.13~5.19) MAU 97, 설문 13명 회수 후 v2 개선
+
+---
+
+## ✨ 주요 기능
+
+### 🎬 영상 선정 Agent (`video_selection_agent/`, LangGraph StateGraph)
+- ✅ 제품 키워드로 YouTube 후보 30개(pool) 수집
+- ✅ 6차원 정량 점수화: engagement · recency · channel_bias · duration · relevance + 가중치
+- ✅ 다양성 필터 + `scope_filter`로 비교 영상(여러 제품 동시 비교) 자동 제외
+- ✅ 기본 전략 `v3_cluster`: coarse-to-fine 클러스터링(Qwen3-Embedding-4B 워커 + KMeans), fine 단계에서 `llm_final_select` + 결정적 verifier
+- ✅ 60초 타임아웃·실패 시 `v1` 정량 폴백, `auto` 단일 경로 k=5
+
+### 💬 댓글 필터링 Agent (`comment_filtering_agent/`, 7-step)
+- ✅ 수집 → 전처리 → 12종 룰 소프트 필터 → Top 300 → 6기준 Multi-Criteria → LLM 5-class 분류 → AgentDecisionEngine + ABSA 감성
+- ✅ 5-class: `PRODUCT_OPINION` / `QUESTION` / `VIDEO_REACTION` / `CHATTER` / `OFF_TOPIC`
+- ✅ AgentDecisionEngine 판정: `ANALYZE` / `AUXILIARY_STORE` / `EXCLUDE` / `HOLD` / `RECLASSIFY`
+- ✅ 영상 단위 `ThreadPoolExecutor` 병렬 처리
+
+### 📄 보고서 생성 (`scripts/reports/`, 4단계 누적)
+- ✅ ① 영상별 자막 → ② 영상별 댓글 → ③ 영상별 통합 → ④ 제품 단위 7섹션 종합
+- ✅ 환각 방지 4규칙 적용
+- ✅ 4종 보고서 다중 LLM 교차검증(`_verification.py`): 생성 → 코드 게이트 → 별도 LLM 비평 → 수정
+- ✅ 임베딩 의미 검색 재정렬(`scripts/rag/`), 제품 이미지 검증(Serper + 비전 LLM)
+
+### ☁️ 배포·운영
+- ✅ Azure Container Apps + GitHub Actions CI/CD: 회귀 게이트 → ACR 빌드 → 배포 → 헬스체크
+- ✅ 하이브리드 fetch worker: residential IP(데스크탑)에서 자막 fetch·scope 분류·임베딩을 위임해 datacenter IP 봇 차단을 우회
+- ✅ DB 캐시로 동일 제품 재요청은 2초 내 응답, 자막은 영구 캐시
+
+---
+
+## 🛠 기술 스택
+
+| 구분 | 기술 |
 |---|---|
-| **영상 선정 Agent** | 제품 키워드 → YouTube 후보 수집 → 6차원 정량 점수 + 다양성 필터 + **비교영상 자동 제외(scope filter)** + LLM Re-rank → 최종 영상 N개 선정 (LangGraph 8-step) |
-| **댓글 필터링 Agent** | 영상별 댓글 수집 → 12종 룰 기반 노이즈 제거 → Top 300 후보 가공 → 6기준 Multi-Criteria 선정 → LLM 5-class 분류 → ABSA 감성 분석 (7-step, ThreadPool 병렬) |
-| **보고서 파이프라인** | 4단계 누적 생성: ① 영상별 자막 보고서 → ② 영상별 댓글 보고서 → ③ 영상별 통합 → ④ **제품 단위 7섹션 종합** (구매 판정 · 핵심 요약 · 6차원 평가표 · 합의 기반 장단점 · 소비자 여론 · 전작 대비 변화 · 추천/비추) |
-| **Supervisor 오케스트레이터** (부분) | **보고서 ④ 생성 경로**를 **LangGraph로 지휘**(전 과정 아님 — 영상 선정은 독립). 흩어져 있던 "DB 캐시냐 새로 fetch냐" 판단을 단일 Freshness 정책으로 통합 → 동일 영상 조합·입력 신선 시 기존 ④ **즉시 반환(캐시)**, 없으면 자동 보강·생성 (`force`로 강제 재생성). 기존 에이전트·YouTube API 무수정 래핑 |
-| **Self-Healing** | 보고서 ④ 생성 시 자막·댓글 누락 영상을 감지해 자동 재수집 (`asyncio.gather` 병렬). 일부 영상 실패는 격리되어 전체 생성에 영향 없음 |
-| **DB 캐시 (FR-020)** | 동일 제품 재요청은 2초 이내 DB 캐시 응답. 자막은 `video_transcripts`에 영구 캐시 |
+| **Backend** | FastAPI 0.104.1, Uvicorn 0.24.0, Pydantic |
+| **Frontend** | Jinja2 3.1.2 + Vanilla JS + Markdown 렌더링 (React/TS 미적용) |
+| **DB** | PostgreSQL 15, psycopg2-binary, Schema Auto-init (19 테이블) |
+| **AI·LLM** | RunYourAI 게이트웨이(`gpt-4.1-2025-04-14`), langchain-openai, LangGraph 0.2+, anthropic |
+| **데이터 수집** | YouTube Data API v3, youtube-transcript-api 0.6.1, yt-dlp |
+| **임베딩·검색** | text-embedding-3-small, stdlib `sqlite3`, 순수 파이썬 코사인 유사도 (벡터DB 미사용) |
+| **ML 보조** | klue/roberta-large(별도 학습 repo), scikit-learn KMeans, Qwen3-Embedding-4B(GPU 워커: torch / transformers / sentence-transformers) |
+| **검색** | Serper |
+| **Infra** | Azure Container Apps, Azure PostgreSQL Flexible, ACR, Log Analytics, Docker |
+| **테스트** | pytest 회귀(`regression/`, 45 tests) |
 
-## 시스템 아키텍처
+---
 
-**부분 Supervisor 구조를 포함한 멀티 에이전트 워크플로우** — 영상 선정 · 댓글 필터링 · 보고서 에이전트가 순차 협업하고, 그중 **보고서 ④ 생성 경로**를 LangGraph Supervisor가 오케스트레이션한다 (영상 선정은 독립 라우트로 동작 — 전 과정을 한 Supervisor가 조율하지는 않음).
-
-```
-사용자 입력 (제품명)
-      ↓
-[영상 선정 Agent — LangGraph]
-  fetch → enrich → score(6차원) → diversity → scope_filter → LLM Re-rank → finalize → rationale
-      ↓
-[자막 수집] yt-dlp / youtube-transcript-api  ←─ 자취방 데스크탑 fetch worker (datacenter IP 우회)
-[댓글 수집] YouTube Data API v3
-      ↓
-[댓글 필터링 Agent — 7-step]
-  collect → preprocess → rule filter → Top 300 → multi-criteria → LLM 5-class → ABSA
-      ↓
-┌─[Supervisor 오케스트레이터 — LangGraph]──────────────────────────────────┐
-│  Freshness 검사 (DB 캐시/신선도 단일 판단)                                │
-│    캐시 적중? ──예──▶ 기존 ④ 보고서 즉시 반환                             │
-│    └─아니오─▶ 자막·댓글 self-heal → 보고서 생성 → 저장                    │
-│                                                                          │
-│  [보고서 파이프라인 v2]                                                   │
-│    ① 자막 보고서 → ② 댓글 보고서 → ③ 영상 통합 → ④ 제품 7섹션 종합        │
-│      ├─ Phase 1: 4종 보고서 다중 LLM 교차 검증 (환각 최소화)              │
-│      ├─ Phase 2-b: RAG 의미 검색·재정렬 (sqlite3 + RunYourAI 임베딩)      │
-│      └─ Phase 3: Serper Google Images + 비전 LLM 제품 이미지 검증         │
-└──────────────────────────────────────────────────────────────────────────┘
-      ↓
-PostgreSQL (17 tables, Schema Auto-init)  →  Jinja2 화면
-```
-
-## 기술적 포인트
-
-- **LangGraph StateGraph로 영상 선정 에이전트화** — 8단계 노드를 그래프로 분리해 노드별 교체·관측 용이. 6차원 정량 점수(조회수·좋아요·최신성·구독자·길이·관련도)와 LLM Re-rank 결합.
-- **LangGraph 부분 Supervisor 오케스트레이터** — 전 과정이 아니라 **보고서 ④ 생성 경로**(댓글 self-heal + 보고서 생성)만 라우트에서 그래프로 분리해 지휘(`orchestrator/`). 영상 선정 Agent는 독립 라우트로 동작. 함수마다 흩어져 있던 "DB 캐시냐 fetch냐" 판단을 **단일 Freshness 정책(READ ONLY)** 으로 통합하고, 동일 영상 조합·입력 신선 시 기존 ④를 **즉시 반환(캐시)**. 분기는 LLM이 아닌 규칙 기반(빠르고 결정론적), LLM은 각 전문 노드 내부에서만 호출. 기존 에이전트 내부·YouTube API 무수정 블랙박스 래핑, langgraph 미설치 시 fallback (NR-007/012).
-- **비교영상 자동 제외(scope filter)** — 자취방 데스크탑 GPU 워커(`klue/roberta-large` 파인튜닝, test acc 89.94%)를 HTTP로 호출해 "여러 제품 비교/랭킹 영상"을 후보에서 제외. `SCOPE_FILTER_ENABLED=0` 킬 스위치, 워커 부재 시 pass-through.
-- **하이브리드 자막 fetch worker** — Azure datacenter IP의 YouTube 봇 차단을 우회하기 위해 자취방 데스크탑(`services/fetch_worker`)에 자막 수집과 scope 분류를 위임. 메인 앱은 워커 미응답 시 안전 퇴화.
-- **환각 방지 4규칙 + 다중 LLM 교차 검증** — 보고서 ④는 ① 근거 명시 ② 합의도 정량화(N/N) ③ 등장 제품만 비교 ④ 데이터 부족 명시. 4종 보고서 모두 별도 LLM으로 교차 검증 후 적재. 검증 실패 시 Heuristic Fallback("데이터 부족" 모드) 자동 전환.
-- **RAG (sqlite3 + RunYourAI 임베딩)** — pgvector 의도적 미선택. 보고서 ④ 입력 절삭을 의미 검색·재정렬로 대체해 토큰 예산 안에서 더 관련성 높은 청크 유지. 실패 시 절삭으로 안전 퇴화.
-- **단일 LLM 게이트웨이** — 모든 LLM 호출이 `scripts/llm/__init__.py:get_chat_llm()` 한 점을 통과(RunYourAI / OpenAI 호환 endpoint). 모델 교체·실험·비용 추적이 한 줄에서 끝남. (이전엔 Azure OpenAI / Groq Llama 등 산재 → PR #15에서 통합)
-- **댓글 LLM → on-prem distillation PoC** — RunYourAI GPT-4.1 댓글 분류를 `klue/roberta-large`로 증류해 일치율 86.5% · 22× speedup · 비용 99% 절감 검증 완료(50제품 N=994 벤치). 운영 통합 대기.
-- **운영 인프라** — Azure Container Apps (FastAPI, min=2/max=5 replicas) + Azure PostgreSQL Flexible Server + Azure Container Registry + Log Analytics. v1 사용자 설문 배포로 검증 완료.
-
-## 기술 스택
-
-| 영역 | 사용 기술 |
-|---|---|
-| Backend | FastAPI · Uvicorn · Pydantic |
-| Frontend | Jinja2 HTML templates · Vanilla JS · Markdown 렌더링 |
-| DB | PostgreSQL 15 (psycopg2-binary) · 17 tables · Schema Auto-init |
-| LLM | **RunYourAI 통합 게이트웨이** (`openai/gpt-4.1-2025-04-14`) · langchain-openai · LangGraph |
-| 오케스트레이션 | LangGraph (영상 선정 Agent · 보고서 ④ Supervisor) |
-| 데이터 수집 | YouTube Data API v3 · youtube-transcript-api · yt-dlp |
-| ML 보조 | klue/roberta-large (scope-classifier, 별 repo) · 텍스트 임베딩 (text-embedding-3-small) |
-| 검색 | Serper Google Images / Web Search (제품 이미지·검색 후보 제안) |
-| 인프라 | Azure Container Apps · Azure PG Flexible Server · ACR · Log Analytics · Docker / docker-compose |
-| 회귀 안전망 | pytest + Phase 0 contract/golden 테스트 (`regression/`) |
-
-## 프로젝트 구조
+## 📁 프로젝트 구조
 
 ```
-Moabom_Prototype/
+moabom/
 ├── main.py                       # FastAPI 진입점
-├── scripts/                      # 운영 본체
-│   ├── config.py                 #   환경변수 단일 진입점
-│   ├── api/                      #   라우터 (products / videos / sync / suggest 등)
-│   ├── database/                 #   PG 연결·스키마(자동 init)·쿼리 헬퍼
-│   ├── youtube/                  #   YouTube API + yt-dlp 자막 (+ worker 클라이언트)
-│   ├── analysis/                 #   감성·제품 관련도 보조
-│   ├── llm/                      #   LLM 단일 진입점 (get_chat_llm)
-│   ├── reports/                  #   4단계 보고서 생성 + 다중 LLM 검증
-│   ├── rag/                      #   Phase 2-b RAG (sqlite3 벡터)
-│   ├── product_image/            #   Phase 3 제품 이미지 검색·비전 검증
-│   ├── popup/  tracking/         #   팝업 메타 / 사용량 추적
-│   └── utils/                    #   프롬프트·공용 유틸
-├── orchestrator/                 # 보고서 ④ Supervisor 오케스트레이터 (LangGraph)
-│   ├── freshness.py              #   캐시/fetch 단일 판단 (READ ONLY)
-│   ├── graph/                    #   state · nodes · builder(+ langgraph 미설치 fallback)
-│   └── runner.py                 #   run_insight_supervisor 진입점
-├── video_selection_agent/        # 영상 선정 LangGraph Agent
-│   ├── graph/ scoring/ youtube/ llm/ persistence/ api/ scope_filter/
-├── comment_filtering_agent/      # 댓글 7-step 필터 Agent
-│   ├── filters/ classifiers/ analyzers/ core/ prompts/ services/
-├── services/fetch_worker/        # 홈서버 워커: /transcript + /scope-classify
-├── regression/                   # Phase 0 회귀 안전망 (pytest)
-├── templates/                    # Jinja2 HTML
-├── seeds/                        # 제품 시드 데이터·검색 캐시
-├── data/                         # 댓글 distillation 라벨 데이터 등
-├── docs/                         # 기획서·요구사항명세서·설계 문서·중간보고서
-├── app/  dags/  llm/  infra/     # 병렬 리팩터링·Airflow 실험 (운영 미연결)
-├── docker-compose.yml            # 로컬 PG + 앱 컨테이너
-├── Dockerfile                    # FastAPI 앱 이미지
-├── requirements.txt              # 운영 의존성
-└── requirements-dev.txt          # 회귀 테스트용 dev 의존성
+├── scripts/                      # 핵심 파이프라인 모듈
+│   ├── config · api · database   # 설정 · 라우터 · DB
+│   ├── youtube · analysis · llm  # 수집 · 분석 · LLM 호출
+│   ├── reports/                  # 보고서 4단계 생성 + 다중 LLM 교차검증
+│   ├── rag/                      # 임베딩 청킹 · sqlite3 저장 · 코사인 재정렬
+│   ├── product_image/            # 제품 이미지 검증 (Serper + 비전 LLM)
+│   └── popup · tracking · utils
+├── orchestrator/                 # 보고서④ Supervisor (freshness · graph · runner)
+├── video_selection_agent/        # 영상 선정 Agent
+│   └── graph(nodes) · scoring · clustering · scope_filter · activation
+├── comment_filtering_agent/      # 댓글 필터링 Agent
+│   └── filters · classifiers · analyzers · core
+├── services/fetch_worker/        # 하이브리드 워커 (FastAPI): /transcript /scope-classify /embed /classify
+├── regression/                   # pytest 회귀 (45 tests)
+├── templates/ · static/          # Jinja2 화면
+├── data/comment_labels/          # 댓글 라벨 6,375건
+├── .github/workflows/deploy.yml  # CI/CD
+└── Dockerfile · docker-compose.yml
 ```
 
-## 빠른 시작
+---
 
-### 사전 준비
+## 🏗 아키텍처 / 동작 흐름
 
-- Python 3.12+
-- Docker (PostgreSQL 컨테이너용)
-- API 키
-  - [YouTube Data API v3](https://console.cloud.google.com/apis/credentials) (필수)
-  - [RunYourAI](https://runyour.ai) API 키 (필수)
-  - [Serper](https://serper.dev) API 키 (선택, 제품 이미지 검색)
-
-### 설치 & 실행 (Linux / macOS / WSL)
-
-```bash
-git clone https://github.com/moabom-official/Moabom_Prototype.git
-cd Moabom_Prototype
-
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-
-cp .env.example .env
-# .env 편집: YOUTUBE_API_KEY, RUNYOURAI_API_KEY 입력
-
-docker compose up -d postgres   # PG 컨테이너 기동 (포트 5432)
-python main.py                  # FastAPI 기동 (기본 :8000)
+```mermaid
+flowchart TD
+    A[제품명 입력] --> B[영상 선정 Agent<br/>fetch → enrich → score 6차원 → diversity → scope → finalize]
+    B --> C{v3_cluster verifier}
+    C -->|통과| D[영상 top-5]
+    C -->|실패 · 60s 타임아웃| E[v1 정량 폴백] --> D
+    D --> F[자막 수집<br/>yt-dlp · fetch worker]
+    D --> G[댓글 수집<br/>YouTube API]
+    G --> H[댓글 필터 7-step 병렬]
+    F --> I
+    H --> I[Supervisor · 보고서④]
+    I --> J{Freshness 캐시 적중?}
+    J -->|적중| K[반환]
+    J -->|미적중| L[Self-Healing 병렬 보강]
+    L --> M[7섹션 보고서 생성 + 다중 LLM 교차검증]
+    M --> N[(PostgreSQL)]
+    N --> O[Jinja2 화면]
 ```
 
-브라우저에서 http://localhost:8000 접속.
+**핵심 구조 포인트**
 
-### Windows PowerShell
+- **멀티에이전트 = 부분 Supervisor 구조.** 영상 선정은 독립 라우트로 돌고, Supervisor(LangGraph)는 보고서④ 경로만 오케스트레이션한다.
+- **분기는 규칙 기반(결정론적).** LLM은 전문 노드 내부에서만 호출하고, 흐름 제어는 규칙이 담당한다. 재현성과 디버깅 가능성을 확보하기 위한 선택이다.
+- **langgraph 미설치 시 `FallbackLinearGraph`로 동작.** 그래프 런타임 부재를 견딘다.
+- **영상 선정 그래프는 6노드.** LLM Re-rank·rationale 노드는 PR4에서 제거해 결정적 verifier 중심으로 정리했다.
+- **Self-Healing.** 자막 없는 영상은 fetch 후 UPSERT, `agent_decisions`가 없는 영상은 댓글 Agent로 보강한다. `asyncio.gather`로 병렬·격리 실행한다.
 
-```powershell
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-Copy-Item .env.example .env
-# .env 편집 후
-docker compose up -d postgres
-python main.py
-```
+---
 
-### 전체 컨테이너 실행 (앱 + DB)
+## 🔌 API 개요
 
-```bash
-docker compose up -d            # app + postgres
-docker compose logs -f app
-```
-
-### 종료
-
-```bash
-docker compose stop postgres    # 데이터 유지
-docker compose down -v          # 데이터까지 삭제
-```
-
-## 환경변수
-
-`.env.example`에 전체 목록과 기본값이 정리되어 있다. 핵심만 발췌:
-
-| 키 | 필수 | 설명 |
+| Method | Endpoint | 설명 |
 |---|---|---|
-| `DATABASE_URL` | ✓ | PostgreSQL 연결 문자열 |
-| `YOUTUBE_API_KEY` | ✓ | YouTube Data API v3 |
-| `RUNYOURAI_API_KEY` | ✓ | 모든 LLM 호출 단일 키 |
-| `RUNYOURAI_MODEL` | | 기본 `openai/gpt-4.1-2025-04-14` (provider/model 형식) |
-| `SERPER_API_KEY` | | Phase 3 제품 이미지. 미설정 시 이미지 없이 안전 퇴화 |
-| `REPORT_VERIFICATION_ENABLED` | | 보고서 다중 LLM 검증 on/off |
-| `REPORT4_INPUT_EXPANSION` | | 보고서 ④ 입력 확장(영상별 ①②③ 종합) on/off |
-| `REPORT4_RAG` | | 보고서 ④ RAG on/off (off 시 절삭 fallback) |
-| `PRODUCT_IMAGE_ENABLED` | | 제품 이미지 수집 on/off |
-| `SCOPE_FILTER_ENABLED` | | 영상 선정 비교영상 제외 on/off |
-| `YOUTUBE_FETCH_WORKER_URL`<br>`YOUTUBE_FETCH_WORKER_TOKEN` | | 홈서버 자막 worker 연동 (선택) |
+| GET | `/` | 메인 |
+| GET | `/products` | 제품 목록 |
+| GET | `/products/suggest` | 제품명 제안 |
+| POST | `/products` | 제품 등록 |
+| GET / DELETE | `/products/{id}` | 조회 · 삭제 |
+| POST | `/products/{id}/image` | 제품 이미지 검증 |
+| POST | `/products/{id}/integrated-insight` | 보고서④ 생성 (Supervisor, `force` 재생성) |
+| POST | `/products/{id}/select-videos` | 영상 선정 (동기) |
+| GET | `/products/{id}/select-videos/progress` | 진행 폴링 |
+| GET | `/products/{id}/selection-runs/{run_id}` | 선정 실행 결과 |
 
-## 데이터베이스
+이 외 video · sync · admin 라우터. 미들웨어: UTF-8, GA, UsageTracking. 회원 인증은 미구현(Google OAuth 예정).
 
-서버 기동 시 `scripts/database/schema.py`가 17개 테이블을 자동 생성한다.
+---
 
-| 카테고리 | 테이블 |
-|---|---|
-| 제품·영상 | `tech_products` · `videos` · `video_transcripts` · `video_reports` |
-| 영상 선정 | `video_selection_runs` · `video_selection_scores` |
-| 댓글 필터 | `comments` · `comment_sentiments` · `rule_filter_results` · `llm_classifications` · `agent_decisions` |
-| ABSA | `aspect_definitions` · `aspect_extractions` |
-| 보고서 | `product_integrated_reports` (INSERT 누적, UPSERT 아님) |
-| 운영 | `usage_events` · `product_meta_cache` · `suggest_cache` |
+## 📋 핵심 기능 상세
 
-## 팀 & 역할
+### 멀티에이전트 파이프라인
+영상 선정은 6차원 정량 점수와 `v3_cluster` 클러스터링으로, 댓글 필터는 LLM 5-class 분류와 12종 룰 소프트 필터로 구성한다. 두 에이전트가 만든 결과를 보고서 생성 단계가 4단계 누적으로 통합한다.
 
-| 멤버 | 역할 |
-|---|---|
-| **김유현** (팀장) | 프로젝트 설계 · UI/UX · 영상 선정 Agent · scope-classifier |
-| **김재현** | 백엔드 아키텍처 · DB 설계 · 댓글 필터링 Agent |
-| **한상민** | 보고서 생성 파이프라인 · Self-Healing · 검증 로직 |
+### KLUE-RoBERTa 증류로 댓글 분류 비용 절감
+교사 모델(GPT-4.1)이 라벨링한 댓글 6,375건으로 `klue/roberta-large`를 증류했다. macro F1 0.917, 추론 속도 22배, 댓글 분류 API 비용 99% 절감. 워커의 `/classify` 엔드포인트로 구현했고 운영 통합은 대기 중이다. 매 요청마다 LLM을 호출하던 분류 단계를 로컬 모델로 대체해 대량 댓글 처리 비용을 상수로 낮췄다.
 
-### 협업 규칙
-- **반드시 main에서 분기한 새 브랜치에서 작업** (`feature/*`, `fix/*`, `docs/*`, `chore/*`). main 직접 커밋 금지.
-- 다른 팀원 코드는 **최소한으로만** 수정. 인터페이스 변경 전 공유.
-- 각자 담당 기능은 **전용 폴더/파일로 모듈화** (NR-007/012: 모델·모듈 교체 시 영향 최소화).
+### 다중 LLM 교차검증
+보고서 생성 → 코드 게이트 → 별도 LLM 비평 → 수정의 4단계로 환각을 통제한다. 환각 방지 4규칙을 적용하고, 4종 보고서에 교차검증을 건다. 생성 모델과 비평 모델을 분리해 자기 검증의 사각지대를 줄였다.
 
-## 트러블슈팅
+### Self-Healing
+자막이 없는 영상은 fetch 후 UPSERT, `agent_decisions`가 비어 있는 영상은 댓글 Agent로 다시 채운다. `asyncio.gather`로 병렬 실행하되 각 보강 작업을 격리해 하나가 실패해도 나머지 보고서 생성이 진행된다.
 
-| 증상 | 해결 |
-|---|---|
-| `connection refused` | `docker compose up -d postgres` 실행 후 재시도 |
-| `ModuleNotFoundError` | venv 활성화 / `pip install -r requirements.txt` |
-| YouTube 403 / 할당량 초과 | API 키 또는 일일 할당량(10,000 units) 확인 |
-| RunYourAI 400 `model should be in provider/model format` | `RUNYOURAI_MODEL`을 `openai/...`, `claude/...`, `gemini/...` 형식으로 |
-| 자막 fetch 차단 | `.env`에 `YT_COOKIES_PATH` 또는 `YT_COOKIES_B64` 설정, 혹은 fetch worker 연동 |
-| 포트 8000 충돌 | `PORT=8001 python main.py` |
-| 보고서 ④에 "데이터 부족" 다수 | 영상 선정 N 확인 / scope filter 과제외 여부 확인 (`SCOPE_FILTER_ENABLED=0`로 테스트) |
+### 임베딩 의미 검색 (벡터DB 미사용)
+`chunker` → `embedder`(text-embedding-3-small, batch 64, `content_hash` 캐시) → `store`(sqlite3에 JSON 직렬화 저장) → `retriever`로 이어진다. retriever는 12개 측면 쿼리를 임베딩한 뒤 **순수 파이썬 코사인 유사도**로 재정렬하고, 길이 상한을 넘으면 하위 항목을 제외한다. faiss·pgvector는 쓰지 않는다. pgvector는 `CREATE EXTENSION` 실패로 SQLite 폴백을 택했다.
 
-## 참고 문서
+---
 
-- [docs/중간보고서_모아봄_최종.pdf](docs/중간보고서_모아봄_최종.pdf) — **현 시점 가장 최신**. 시스템 아키텍처·시퀀스·UI 와이어프레임·진행 현황·기여도
-- [docs/중간발표_모아봄.pdf](docs/중간발표_모아봄.pdf) — 발표 자료 (Appendix에 댓글 필터 Step 02~07 상세)
-- [docs/요구사항명세서_모아봄_v5.pdf](docs/요구사항명세서_모아봄_v5.pdf) — FR-001~025, NR-001~015 전체 명세
-- [docs/인공지능종합설계_과제기획서_모아봄.pdf](docs/인공지능종합설계_과제기획서_모아봄.pdf) — 배경·범위·일정·역할 분담
-- [docs/ORCHESTRATOR_SUPERVISOR_DESIGN.md](docs/ORCHESTRATOR_SUPERVISOR_DESIGN.md) — 보고서 ④ Supervisor 오케스트레이터 설계 (구조도 포함)
-- [docs/COMMENT_FILTERING_AGENT_DESIGN.md](docs/COMMENT_FILTERING_AGENT_DESIGN.md) — 댓글 필터 Agent 설계
-- [docs/VIDEO_SELECTION_AGENT_DESIGN.md](docs/VIDEO_SELECTION_AGENT_DESIGN.md) — 영상 선정 Agent 설계 (`docs/assets/video_selection_agent_flowchart.png` 다이어그램)
+## 📊 성과 · 정량 지표
+
+| 지표 | 값 | 근거 |
+|---|---|---|
+| 판정 일관성 | **98%** | 300 run(10제품 × 10반복 × 3모델), GPT-4.1 90% · Gemini 86% 대비 |
+| 댓글 분류 | **macro F1 0.917** | KLUE-RoBERTa 증류 모델 |
+| 비교 영상 탐지 | **0.899** | scope 분류 정확도 |
+| 추론 속도 · 비용 | **22배 / 99% 절감** | 로컬 증류 모델 대체 (댓글 분류) |
+| 실사용 | **MAU 97** | v1 MVP 2026.5.13~5.19, 설문 13명 회수 → v2 개선 |
+| 회귀 테스트 | **45 tests** | `regression/` |
+| 학습 데이터 | **6,375건** | 댓글 라벨(`data/comment_labels/`) |
+
+---
+
+## 👤 팀 · 역할
+
+인하대학교 AI공학과 캡스톤 3인 프로젝트.
+
+| 이름 | 역할 | 담당 |
+|---|---|---|
+| **김재현** (AI/Data Engineer) | 백엔드 · 데이터 | 백엔드 아키텍처, DB 설계(19테이블), 댓글 필터링 Agent, 댓글 분류 KLUE-RoBERTa 증류(개인 레포) |
+| **김유현** (팀장) | 설계 · 프론트 · 영상 | 전체 설계, UI/UX, 영상 선정 Agent, scope-classifier |
+| **한상민** | 보고서 · 검증 | 보고서 파이프라인, Self-Healing, 다중 LLM 검증 |
+
+---
+
+## 🐛 로컬 개발 / 실행
+
+```bash
+# 의존성 설치
+pip install -r requirements.txt
+
+# docker-compose로 실행 (app + PostgreSQL)
+docker-compose up --build
+
+# 또는 직접 실행
+uvicorn main:app --reload
+```
+
+환경변수(`scripts/config`)는 YouTube Data API v3 키, RunYourAI 게이트웨이 키, PostgreSQL 접속 정보, Serper 키를 사용한다. 실제 키 값은 레포에 포함하지 않는다. GPU 워커(Qwen3-Embedding, KLUE 분류)는 데스크탑 환경에서 `services/fetch_worker`로 기동한다.
