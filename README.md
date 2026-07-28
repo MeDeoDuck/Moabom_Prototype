@@ -1,4 +1,5 @@
-# Moabom — 실사용자에게 배포한 멀티에이전트 리뷰 분석 서비스, 로컬 모델 증류로 댓글 분류 비용 99% 절감
+# Moabom
+> 멀티에이전트 테크 제품 리뷰 분석 서비스
 
 ![Status](https://img.shields.io/badge/status-MVP%20Deployed-brightgreen)
 ![Type](https://img.shields.io/badge/type-Multi--Agent%20LLM%20%2B%20Full%20Stack-blue)
